@@ -1,6 +1,6 @@
 # Security verification record
 
-**Project:** Media Approval Portal
+**Project:** Vetoarr
 **Evidence date:** November 15, 2026
 **Image tested:** `local/media-approval-portal:security-hardening`
 **Evidence source:** operator-shared Unraid command output, Git/Gitleaks output, and Cloudflare/OPNsense screenshots. Results are point-in-time; this document is not an independent audit or certification.

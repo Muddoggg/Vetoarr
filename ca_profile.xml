@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <CommunityApplications>
-  <Profile>Media Approval Portal allows people who share your Plex server to request movie and TV show removal. The server owner approves requests, and Maintainerr schedules downstream deletion. Maintained by tbutz12. For documentation and support, visit the project's GitHub repository and Issues page.</Profile>
-  <WebPage>https://github.com/tbutz12/MediaApprovalPortal</WebPage>
+  <Profile>Vetoarr allows people who share your Plex server to request movie and TV show removal. The server owner approves requests, and Maintainerr schedules downstream deletion. Maintained by tbutz12. For documentation and support, visit the project's GitHub repository and Issues page.</Profile>
+  <Icon>https://raw.githubusercontent.com/tbutz12/Vetoarr/main/assets/icon.svg</Icon>
+  <WebPage>https://github.com/tbutz12/Vetoarr</WebPage>
 </CommunityApplications>

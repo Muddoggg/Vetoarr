@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible problem with Media Approval Portal
+description: Report a reproducible problem with Vetoarr
 title: "[Bug] "
 labels: ["bug"]
 body:
