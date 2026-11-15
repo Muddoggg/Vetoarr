@@ -130,7 +130,7 @@ class PortalTests(unittest.TestCase):
 
     def test_one_day_policy_is_configurable(self):
         self.assertEqual(portal.MIN_DELETE_DAYS, 7)  # test environment sets 7; lower bound is 1
-        source = pathlib.Path(portal.__file__).read_text()
+        source = pathlib.Path(portal.__file__).read_text(encoding="utf-8")
         self.assertIn("MIN_DELETE_DAYS = max(1,", source)
 
     def test_pin_start_requires_csrf(self):
@@ -348,6 +348,268 @@ class PortalTests(unittest.TestCase):
              patch.object(portal, 'plex_cloud', return_value=[{'clientIdentifier':'different-server', 'provides':'server', 'accessToken':'x'}]):
             self.assertIsNone(portal.plex_server_token('user-token'))
 
+
+class DiscordTests(unittest.TestCase):
+    # Reuse fixture helpers without inheriting all PortalTests test methods.
+    req = PortalTests.req
+    csrf = PortalTests.csrf
+    logged_in = PortalTests.logged_in
+
+    def setUp(self):
+        PortalTests.setUp(self)
+        with portal.conn() as c:
+            c.execute('UPDATE discord_settings SET webhook_cipher=NULL, enabled=0, new_request=1, approved=1, rejected=1, review=1 WHERE id=1')
+            c.execute('UPDATE discord_test_limits SET last_attempt=0 WHERE id=1')
+
+    def test_discord_admin_only(self):
+        self.logged_in('222')
+        self.assertEqual(self.req('/admin/discord').status_code, 403)
+        self.assertEqual(self.req('/admin/discord/save', method='POST', data={'csrf':'csrf-test'}).status_code, 403)
+        self.assertEqual(self.req('/admin/discord/test', method='POST', data={'csrf':'csrf-test'}).status_code, 403)
+        self.assertEqual(self.req('/admin/discord/remove', method='POST', data={'csrf':'csrf-test'}).status_code, 403)
+
+    def test_discord_webhook_validation(self):
+        good='https://discord.com/api/webhooks/123456789012345678/' + 'a'*60
+        self.assertEqual(portal.validate_discord_webhook(good),good)
+        for bad in ['http://discord.com/api/webhooks/123456789012345678/'+ 'a'*60,
+                    'https://discord.com.evil.test/api/webhooks/123456789012345678/'+'a'*60,
+                    'https://discord.com@evil.test/api/webhooks/123456789012345678/'+'a'*60,
+                    'https://discord.com/api/webhooks/123456789012345678/'+'a'*60+'?wait=true',
+                    'https://discord.com/api/webhooks/123456789012345678/'+'a'*60+'#frag']:
+            with self.assertRaises(ValueError): portal.validate_discord_webhook(bad)
+
+    def test_discord_saved_encrypted_and_disabled_by_default(self):
+        self.logged_in('111')
+        hook='https://discord.com/api/webhooks/123456789012345678/'+'a'*60
+        r=self.req('/admin/discord/save',method='POST',data={'csrf':'csrf-test','enabled':'on','webhook':hook,'new_request':'on'})
+        self.assertEqual(r.status_code,302)
+        cfg=portal.discord_config()
+        self.assertEqual(cfg['enabled'],1)
+        self.assertNotIn(hook.encode(),bytes(cfg['webhook_cipher']))
+        self.assertEqual(portal.fernet.decrypt(cfg['webhook_cipher']).decode(), hook)
+        self.assertNotIn(hook.encode(), self.req('/admin/discord').data)
+        self.req('/admin/discord/remove',method='POST',data={'csrf':'csrf-test'})
+        self.assertIsNone(portal.discord_config()['webhook_cipher'])
+        self.assertEqual(portal.discord_config()['enabled'],0)
+
+    def test_discord_failure_cannot_interrupt_requests(self):
+        with patch.object(portal, 'discord_send', return_value=False):
+            row={'id':1,'title':'Test','requester':'test','media_type':'movie'}
+            portal.discord_notify('new_request',[row])
+
+    def test_discord_test_button(self):
+        self.logged_in('111')
+        hook='https://discord.com/api/webhooks/123456789012345678/'+'a'*60
+        self.req('/admin/discord/save',method='POST',data={'csrf':'csrf-test','webhook':hook,'enabled':'on'})
+        with patch.object(portal, 'discord_send', return_value=True) as mocked:
+            r=self.req('/admin/discord/test',method='POST',data={'csrf':'csrf-test'})
+        self.assertEqual(r.status_code,302)
+        mocked.assert_called_once()
+
+
+    def test_discord_redirect_is_not_success(self):
+        hook='https://discord.com/api/webhooks/123456789012345678/'+'a'*60
+        for status, expected in [(204,True),(200,True),(302,False),(307,False),
+                                 (400,False),(429,False),(500,False)]:
+            reply=MagicMock(status_code=status)
+            with patch.object(portal.discord_http, 'post', return_value=reply) as posted:
+                self.assertEqual(portal.discord_send(hook, 'test'), expected)
+            self.assertFalse(posted.call_args.kwargs['allow_redirects'])
+            self.assertEqual(posted.call_args.kwargs['timeout'], (1,2))
+
+    def test_discord_http_ignores_proxy_environment(self):
+        self.assertFalse(portal.discord_http.trust_env)
+        self.assertEqual(portal.discord_http.max_redirects, 0)
+
+    def test_discord_test_button_rate_limited(self):
+        self.logged_in('111')
+        hook='https://discord.com/api/webhooks/123456789012345678/'+'a'*60
+        self.req('/admin/discord/save',method='POST',data={'csrf':'csrf-test','webhook':hook})
+        with patch.object(portal, 'discord_send', return_value=True) as sent:
+            self.assertEqual(self.req('/admin/discord/test',method='POST',data={'csrf':'csrf-test'}).status_code,302)
+            self.assertEqual(self.req('/admin/discord/test',method='POST',data={'csrf':'csrf-test'}).status_code,302)
+            sent.assert_called_once()
+        with portal.conn() as c:
+            c.execute('UPDATE discord_test_limits SET last_attempt=0 WHERE id=1')
+        with patch.object(portal, 'discord_send', return_value=True) as sent:
+            self.req('/admin/discord/test',method='POST',data={'csrf':'csrf-test'})
+            sent.assert_called_once()
+
+    def test_discord_invalid_saved_url_never_sent(self):
+        with patch.object(portal.discord_http, 'post') as posted:
+            self.assertFalse(portal.discord_send('https://evil.test/unsafe','test'))
+            posted.assert_not_called()
+
+    def test_discord_no_mentions_and_sanitized_message(self):
+        self.logged_in('111')
+        hook='https://discord.com/api/webhooks/123456789012345678/'+'a'*60
+        self.req('/admin/discord/save',method='POST',data={'csrf':'csrf-test',
+                  'webhook':hook,'enabled':'on','new_request':'on'})
+        row={'id':1,'title':'@everyone\nFake approval', 'requester':'plex:222','media_type':'movie'}
+        with patch.object(portal.discord_http, 'post', return_value=MagicMock(status_code=204)) as posted:
+            portal.discord_notify('new_request',[row])
+        body=posted.call_args.kwargs['json']
+        self.assertEqual(body['allowed_mentions'], {'parse': []})
+        self.assertNotIn('@everyone', body['embeds'][0]['description'])
+        self.assertNotIn('\n', body['embeds'][0]['description'])
+
+
+    def _configure_discord(self, **flags):
+        """Enable a fake webhook without ever making a network request."""
+        self.logged_in('111')
+        form = {'csrf': 'csrf-test', 'enabled': 'on',
+                'webhook': 'https://discord.com/api/webhooks/123456789012345678/' + 'a' * 60}
+        form.update({key: 'on' for key, on in flags.items() if on})
+        response = self.req('/admin/discord/save', method='POST', data=form)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(portal.discord_config()['enabled'], 1)
+
+    def _request_row(self, plex_id='87654321', status='pending'):
+        with portal.conn() as c:
+            c.execute('INSERT INTO requests (requester, plex_id, media_type, title, status) '
+                      'VALUES (?,?,?,?,?)', ('plex:222', plex_id, 'movie', 'Test Movie', status))
+            return c.execute('SELECT id FROM requests WHERE plex_id=?', (plex_id,)).fetchone()[0]
+
+    def test_discord_request_lifecycle_notifications(self):
+        """Submitting, approving, rejecting, and review each use the correct event."""
+        self._configure_discord(new_request=True, approved=True, rejected=True, review=True)
+        media = {'id': '87654322', 'title': 'Test Movie', 'type': 'movie', 'section_id': '1'}
+        self.logged_in('222')
+        with patch.object(portal, 'plex_item', return_value=media), \
+             patch.object(portal, 'collection_for_item', return_value=1), \
+             patch.object(portal, 'discord_send', return_value=True) as sent:
+            response = self.req('/request', 'POST', data={'csrf': 'csrf-test', 'plex_id': media['id']})
+        self.assertEqual(response.status_code, 302)
+        sent.assert_called_once()
+        self.assertEqual(sent.call_args.kwargs['title'], 'New removal request')
+        with portal.conn() as c:
+            request_id = c.execute('SELECT id FROM requests WHERE plex_id=?', (media['id'],)).fetchone()[0]
+        self.logged_in('111')
+        with patch.object(portal, 'plex_item', return_value=media), \
+             patch.object(portal, 'collection_for_item', return_value=1), \
+             patch.object(portal, 'check_collection'), \
+             patch.object(portal, 'has_membership', side_effect=[False, True]), \
+             patch.object(portal, 'service_json', return_value={}) as upstream, \
+             patch.object(portal, 'discord_send', return_value=True) as sent:
+            response = self.req(f'/decide/{request_id}', 'POST', data={'csrf': 'csrf-test', 'decision': 'approve'})
+        self.assertEqual(response.status_code, 302)
+        upstream.assert_called_once()
+        sent.assert_called_once()
+        self.assertEqual(sent.call_args.kwargs['title'], 'Request approved')
+        with portal.conn() as c:
+            self.assertEqual(c.execute('SELECT status FROM requests WHERE id=?', (request_id,)).fetchone()[0], 'approved')
+
+        request_id = self._request_row('87654323')
+        with patch.object(portal, 'discord_send', return_value=True) as sent:
+            response = self.req(f'/decide/{request_id}', 'POST', data={'csrf': 'csrf-test', 'decision': 'reject'})
+        self.assertEqual(response.status_code, 302)
+        sent.assert_called_once()
+        self.assertEqual(sent.call_args.kwargs['title'], 'Request rejected')
+        with portal.conn() as c:
+            self.assertEqual(c.execute('SELECT status FROM requests WHERE id=?', (request_id,)).fetchone()[0], 'rejected')
+
+        request_id = self._request_row('87654324')
+        uncertain = {**media, 'id': '87654324'}
+        with patch.object(portal, 'plex_item', return_value=uncertain), \
+             patch.object(portal, 'collection_for_item', return_value=1), \
+             patch.object(portal, 'check_collection'), \
+             patch.object(portal, 'has_membership', return_value=False), \
+             patch.object(portal, 'service_json', side_effect=portal.requests.Timeout('ambiguous')) as upstream, \
+             patch.object(portal, 'discord_send', return_value=True) as sent:
+            response = self.req(f'/decide/{request_id}', 'POST', data={'csrf': 'csrf-test', 'decision': 'approve'})
+        self.assertEqual(response.status_code, 302)
+        upstream.assert_called_once()
+        sent.assert_called_once()
+        self.assertEqual(sent.call_args.kwargs['title'], 'Request needs review')
+        with portal.conn() as c:
+            self.assertEqual(c.execute('SELECT status FROM requests WHERE id=?', (request_id,)).fetchone()[0], 'review')
+
+    def test_discord_bulk_submission_aggregates_notifications(self):
+        self._configure_discord(new_request=True)
+        self.logged_in('222')
+        items = {'87654331': {'id': '87654331', 'type': 'movie', 'title': 'Movie A', 'section_id': '1'},
+                 '87654332': {'id': '87654332', 'type': 'movie', 'title': 'Movie B', 'section_id': '1'}}
+        with patch.object(portal, 'plex_item', side_effect=lambda item, **kw: items[item]), \
+             patch.object(portal, 'collection_for_item', return_value=1), \
+             patch.object(portal, 'discord_send', return_value=True) as sent:
+            response = self.req('/request/bulk', 'POST', data={'csrf': 'csrf-test', 'plex_ids': list(items)})
+        self.assertEqual(response.status_code, 302)
+        sent.assert_called_once()
+        self.assertEqual(sent.call_args.kwargs['title'], 'New removal request')
+        self.assertIn('Movie A', sent.call_args.args[1])
+        self.assertIn('Movie B', sent.call_args.args[1])
+        with portal.conn() as c:
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM requests WHERE plex_id IN ('87654331','87654332')").fetchone()[0], 2)
+
+    def test_discord_event_toggles_block_selected_notifications(self):
+        self._configure_discord(new_request=False, approved=True, rejected=False, review=False)
+        row = {'id': 1, 'title': 'Film', 'requester': 'plex:222', 'media_type': 'movie'}
+        with patch.object(portal, 'discord_send', return_value=True) as sent:
+            for event in ('new_request', 'rejected', 'review'):
+                portal.discord_notify(event, [row])
+            sent.assert_not_called()
+            portal.discord_notify('approved', [row])
+            sent.assert_called_once()
+            self.assertEqual(sent.call_args.kwargs['title'], 'Request approved')
+        with portal.conn() as c:
+            c.execute('UPDATE discord_settings SET enabled=0 WHERE id=1')
+        with patch.object(portal, 'discord_send', return_value=True) as sent:
+            portal.discord_notify('approved', [row])
+            sent.assert_not_called()
+
+    def test_discord_toggle_blocks_real_request_notification(self):
+        self._configure_discord(new_request=False)
+        self.logged_in('222')
+        media = {'id': '87654335', 'title': 'Silent Film', 'type': 'movie', 'section_id': '1'}
+        with patch.object(portal, 'plex_item', return_value=media), \
+             patch.object(portal, 'collection_for_item', return_value=1), \
+             patch.object(portal, 'discord_send', return_value=True) as sent:
+            response = self.req('/request', 'POST', data={'csrf': 'csrf-test', 'plex_id': media['id']})
+        self.assertEqual(response.status_code, 302)
+        sent.assert_not_called()
+        with portal.conn() as c:
+            self.assertEqual(c.execute('SELECT status FROM requests WHERE plex_id=?', (media['id'],)).fetchone()[0], 'pending')
+
+    def test_discord_reconcile_notifies_only_on_confirmed_membership(self):
+        self._configure_discord(approved=True)
+        req_id = self._request_row('87654336', 'review')
+        media = {'id': '87654336', 'title': 'Test Movie', 'type': 'movie', 'section_id': '1'}
+        with patch.object(portal, 'plex_item', return_value=media), \
+             patch.object(portal, 'collection_for_item', return_value=1), \
+             patch.object(portal, 'has_membership', return_value=False), \
+             patch.object(portal, 'discord_send', return_value=True) as sent:
+            response = self.req(f'/admin/reconcile/{req_id}', 'POST', data={'csrf': 'csrf-test'})
+        self.assertEqual(response.status_code, 302)
+        sent.assert_not_called()
+        with patch.object(portal, 'plex_item', return_value=media), \
+             patch.object(portal, 'collection_for_item', return_value=1), \
+             patch.object(portal, 'has_membership', return_value=True), \
+             patch.object(portal, 'discord_send', return_value=True) as sent:
+            response = self.req(f'/admin/reconcile/{req_id}', 'POST', data={'csrf': 'csrf-test'})
+        self.assertEqual(response.status_code, 302)
+        sent.assert_called_once()
+        self.assertEqual(sent.call_args.kwargs['title'], 'Request approved')
+        with portal.conn() as c:
+            self.assertEqual(c.execute('SELECT status FROM requests WHERE id=?', (req_id,)).fetchone()[0], 'approved')
+
+    def test_discord_unconfigured_or_failed_delivery_is_nonblocking(self):
+        self.logged_in('222')
+        media = {'id': '87654337', 'title': 'Test Film', 'type': 'movie', 'section_id': '1'}
+        with patch.object(portal, 'plex_item', return_value=media), \
+             patch.object(portal, 'collection_for_item', return_value=1), \
+             patch.object(portal, 'discord_send', side_effect=AssertionError('must be disabled')):
+            response = self.req('/request', 'POST', data={'csrf': 'csrf-test', 'plex_id': media['id']})
+        self.assertEqual(response.status_code, 302)
+        self._configure_discord(new_request=True)
+        self.logged_in('222')
+        media = {**media, 'id': '87654338'}
+        with patch.object(portal, 'plex_item', return_value=media), \
+             patch.object(portal, 'collection_for_item', return_value=1), \
+             patch.object(portal, 'discord_send', side_effect=portal.requests.Timeout('discord')):
+            response = self.req('/request', 'POST', data={'csrf': 'csrf-test', 'plex_id': media['id']})
+        self.assertEqual(response.status_code, 302)
+        with portal.conn() as c:
+            self.assertEqual(c.execute('SELECT status FROM requests WHERE plex_id=?', (media['id'],)).fetchone()[0], 'pending')
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

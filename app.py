@@ -98,6 +98,17 @@ def setup():
         if 'encrypted_server_token' not in cols:
             c.execute('ALTER TABLE plex_sessions ADD COLUMN encrypted_server_token BLOB')
         c.execute('CREATE TABLE IF NOT EXISTS portal_meta (name TEXT PRIMARY KEY, value INTEGER NOT NULL)')
+        c.execute('''CREATE TABLE IF NOT EXISTS discord_settings (
+            id INTEGER PRIMARY KEY CHECK (id=1), webhook_cipher BLOB,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            new_request INTEGER NOT NULL DEFAULT 1,
+            approved INTEGER NOT NULL DEFAULT 1,
+            rejected INTEGER NOT NULL DEFAULT 1,
+            review INTEGER NOT NULL DEFAULT 1)''')
+        c.execute('INSERT OR IGNORE INTO discord_settings (id) VALUES (1)')
+        c.execute('''CREATE TABLE IF NOT EXISTS discord_test_limits (
+            id INTEGER PRIMARY KEY CHECK(id=1), last_attempt INTEGER NOT NULL DEFAULT 0)''')
+        c.execute('INSERT OR IGNORE INTO discord_test_limits (id,last_attempt) VALUES (1,0)')
         c.execute("INSERT OR IGNORE INTO portal_meta VALUES ('global_epoch',0)")
         c.execute('CREATE TABLE IF NOT EXISTS auth_attempts (access_subject TEXT NOT NULL, attempted_at INTEGER NOT NULL)')
         # One-time migration: revoke sessions that were bound to Cloudflare identities.
@@ -134,7 +145,7 @@ def quarantine_interrupted_approvals():
 
 BASE = """<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>Vetoarr</title><link rel="icon" type="image/svg+xml" href="/static/icon.svg"><style>
 :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;color:#edf1f8;background:#090d15}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 65% -12%,#1b3154 0,transparent 48%),#090d15}a{color:#92c5ff;text-decoration:none}a:hover{text-decoration:underline}.shell{max-width:1120px;margin:0 auto;padding:26px 26px 90px}.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:25px;border-bottom:1px solid #283242}.logo{display:flex;align-items:center;gap:10px}.logo img{width:28px;height:28px;display:block}.logo{font-weight:800;font-size:19px;letter-spacing:-.6px}.logo b{color:#6aafff}.userbar{display:flex;align-items:center;gap:14px;color:#a4b2c8;font-size:13px}.userbar form{display:inline}.hero{padding:42px 0 20px}.eyebrow,.auth-badge{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8abfff;font-weight:800}.hero h1,.auth h1{font-size:clamp(32px,5vw,52px);line-height:1.1;letter-spacing:-1.8px;margin:14px 0}.hero p,.auth p{color:#9cacc1;max-width:640px;line-height:1.65}.layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(270px,1fr);gap:20px}.panel{background:#131c2a;border:1px solid #2a3748;border-radius:18px;padding:23px;margin:18px 0;box-shadow:0 10px 32px #0002}.panel h2,.panel h3{margin:0 0 16px;font-size:19px;letter-spacing:-.4px}.muted,small{color:#9baabd}.tiny{font-size:12px}.notice{padding:13px 18px;background:#19334e;border:1px solid #355473;border-radius:12px;margin:16px 0}.fields{display:flex;gap:10px}.fields input{flex:1;min-width:0}input[type=text],input[name=q]{padding:13px 15px;background:#0e1622;border:1px solid #36465b;border-radius:11px;color:#f0f4fc;font:inherit;min-width:0}button,.pill{padding:11px 15px;background:#25344a;border:1px solid #3c516d;color:#f1f5ff;border-radius:10px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}button:hover{filter:brightness(1.17)}button.primary{background:#427ee7;border-color:#5597f9}button.danger{background:#4f2531;border-color:#a64a60;color:#ffc4ce}.big{padding:15px 22px;font-size:16px}.line{display:flex;gap:12px;align-items:center;padding:13px 2px;border-bottom:1px solid #293547}.line:last-child{border:0}.line label{flex:1;cursor:pointer}.line small{display:block;margin-top:4px}.line input[type=checkbox]{accent-color:#75adff;width:18px;height:18px}.line form{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}.line button{padding:8px 11px}.tag{display:inline-block;background:#273c59;color:#add1ff;border:1px solid #35547b;border-radius:8px;padding:4px 9px;font-size:11px;margin:0 3px 4px 0}.pending{background:#55451e;color:#f9da92}.approved{background:#1c4637;color:#a3ecd1}.rejected{background:#4d2830;color:#ffd1db}.review{background:#523627;color:#ffbe94}details{border:1px solid #2f4156;border-radius:12px;padding:14px;margin:10px 0;background:#111a28}summary{cursor:pointer;font-weight:750;font-size:17px;list-style-position:inside}summary::marker{color:#7aaaff}.library-link{display:inline-block;padding:9px 13px;border-radius:10px;margin:9px 6px 6px 0;background:#243851}.pager{display:flex;gap:15px;padding-top:15px}.auth{max-width:560px;margin:11vh auto;border:1px solid #31445c;border-radius:22px;padding:48px;background:#111c2b}.auth h1 span{color:#8cbcff}form{margin:0}.section-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.request-title{font-size:14px;font-weight:750}.request-panel{overflow:hidden}.request-list{max-height:540px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:5px}.request-panel .section-head{position:sticky;top:0;background:#131c2a;z-index:1;padding-bottom:12px;flex-wrap:wrap}.request-panel .section-head h2{margin:0}.request-meta{font-size:12px;color:#a5b3c8;line-height:1.6;margin-top:3px}.batchbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:15px;flex-wrap:wrap}.empty{padding:14px;color:#8c9fb8}@media(max-width:820px){.layout{grid-template-columns:1fr}.shell{padding:18px 15px 50px}.panel{padding:17px}.userbar{gap:6px;flex-wrap:wrap;justify-content:flex-end}.request-list{max-height:390px}.hero{padding:25px 0 10px}.fields{flex-direction:column}.auth{padding:28px;margin:8vh auto}}
-</style></head><body><div class="shell"><header class="topbar"><a class="logo" href="/"><img src="/static/icon.png" alt="" aria-hidden="true">Vetoarr</a>{% if user %}<div class="userbar"><span>{{user}}</span><a href="{{url_for('index')}}">Library</a><a href="{{url_for('my_requests')}}">My requests</a>{% if role=='admin' %}<a href="{{url_for('all_requests')}}">All requests</a>{% endif %}<form method="post" action="{{url_for('logout')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button>Sign out</button></form></div>{% endif %}</header>{% for msg in get_flashed_messages() %}<p class="notice">{{msg}}</p>{% endfor %}{{content|safe}}</div></body></html>"""
+</style></head><body><div class="shell"><header class="topbar"><a class="logo" href="/"><img src="/static/icon.png" alt="" aria-hidden="true">Vetoarr</a>{% if user %}<div class="userbar"><span>{{user}}</span><a href="{{url_for('index')}}">Library</a><a href="{{url_for('my_requests')}}">My requests</a>{% if role=='admin' %}<a href="{{url_for('all_requests')}}">All requests</a><a href="{{url_for('discord_notifications')}}">Discord</a>{% endif %}<form method="post" action="{{url_for('logout')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button>Sign out</button></form></div>{% endif %}</header>{% for msg in get_flashed_messages() %}<p class="notice">{{msg}}</p>{% endfor %}{{content|safe}}</div></body></html>"""
 
 
 def page(html, **ctx):
@@ -467,6 +478,180 @@ def logout():
     return redirect(url_for('login'))
 
 
+# Discord webhook URL is a credential. Keep it encrypted, never show it again,
+# and only permit Discord's exact HTTPS webhook API endpoint (SSRF protection).
+_DISCORD_EVENTS = ('new_request', 'approved', 'rejected', 'review')
+_DISCORD_WEBHOOK_PATH = re.compile(r'/api/webhooks/[0-9]{15,25}/[A-Za-z0-9_-]{25,200}/?')
+DISCORD_TEST_COOLDOWN_SECONDS = 60
+# Dedicated session: webhook URLs contain credentials and must not use proxy
+# settings inherited from the container environment.
+discord_http = requests.Session()
+discord_http.trust_env = False
+# Explicitly prohibit redirects on every send (even though send() also sets it).
+discord_http.max_redirects = 0
+
+
+def validate_discord_webhook(value):
+    if not value or len(value) > 400:
+        raise ValueError('Invalid Discord webhook URL')
+    p = urlsplit(value)
+    if (p.scheme != 'https' or p.hostname not in ('discord.com', 'discordapp.com')
+            or p.port is not None or p.username or p.password or p.query or p.fragment
+            or not _DISCORD_WEBHOOK_PATH.fullmatch(p.path)
+            or p.netloc.lower() != p.hostname):
+        raise ValueError('Webhook must be a Discord HTTPS webhook URL')
+    return value.rstrip('/')
+
+
+def discord_config():
+    with conn() as c:
+        return c.execute('SELECT * FROM discord_settings WHERE id=1').fetchone()
+
+
+def discord_send(url, description, title='Vetoarr', color=5793266):
+    # Best-effort outbound call. Never redirect a credential-bearing URL,
+    # trust environment proxy settings, or log a webhook URL or response body.
+    try:
+        # Re-validate decrypted stored values too (defense in depth).
+        url = validate_discord_webhook(url)
+        response = discord_http.post(url, json={
+            'username': 'Vetoarr',
+            'allowed_mentions': {'parse': []},
+            'embeds': [{'title': title[:256], 'description': description[:2000], 'color': color}],
+        }, timeout=(1, 2), allow_redirects=False)
+        # Discord normally returns 204, optionally 200. 3xx is not success.
+        if response.status_code not in (200, 204):
+            app.logger.warning('Discord notification rejected (HTTP %d)', response.status_code)
+            return False
+        return True
+    except (requests.RequestException, ValueError) as exc:
+        app.logger.warning('Discord notification failed (%s)', type(exc).__name__)
+        return False
+
+
+def discord_notify(event, rows):
+    # Notifications are best effort and must never change request outcomes.
+    try:
+        config = discord_config()
+        if not config or not config['enabled'] or not config['webhook_cipher'] or not config[event]:
+            return
+        url = fernet.decrypt(config['webhook_cipher']).decode()
+        labels = {'new_request': 'New removal request', 'approved': 'Request approved',
+                  'rejected': 'Request rejected', 'review': 'Request needs review'}
+        lines = []
+        for row in rows[:20]:
+            # Strip mention syntax and Discord markdown from untrusted Plex titles/names.
+            title = re.sub(r'\s+', ' ', re.sub(r'[@`*_~|<>\\]', '', str(row['title']))).strip()[:100]
+            # Use a friendly Plex username rather than the internal account ID.
+            with conn() as c:
+                account = c.execute('SELECT username FROM plex_sessions WHERE plex_user_id=?',
+                                    (str(row['requester']).removeprefix('plex:'),)).fetchone()
+            requester = re.sub(r'\s+', ' ', re.sub(r'[@`*_~|<>\\]', '', str(account['username'] if account else 'Plex user'))).strip()[:60]
+            lines.append(f"#{int(row['id'])}  {title} ({row['media_type']})  |  {requester}")
+        discord_send(url, '\n'.join(lines), title=labels[event],
+                     color=15158332 if event in ('rejected', 'review') else 5793266)
+    except Exception as exc:  # Discord failures must not affect deletion
+        app.logger.warning('Discord notification skipped (%s)', type(exc).__name__)
+
+
+@app.get('/admin/discord')
+@require_login
+def discord_notifications():
+    if session['role'] != 'admin':
+        abort(403)
+    cfg = discord_config()
+    return page("""<section class="hero"><span class="eyebrow">ADMINISTRATOR</span>
+      <h1>Discord Notifications</h1><p>Get notified when users request media removal and when requests are reviewed.</p></section>
+      <section class="panel"><h2>Webhook settings</h2>
+      <p class="muted">Webhook URLs are encrypted on disk. Saved URLs are never shown here.</p>
+      <form method="post" action="{{url_for('save_discord')}}">
+      <input type="hidden" name="csrf" value="{{csrf}}">
+      <div class="line"><label for="discord-enabled">Enable Discord notifications</label>
+      <input id="discord-enabled" type="checkbox" name="enabled" {% if cfg['enabled'] %}checked{% endif %}></div>
+      <p><label for="webhook">Discord webhook URL {% if configured %}(configured){% else %}(not configured){% endif %}</label></p>
+      <input id="webhook" type="password" name="webhook" autocomplete="new-password"
+        placeholder="Leave blank to keep existing webhook" style="width:100%;max-width:650px;padding:12px;background:#0e1622;color:white;border:1px solid #36465b;border-radius:10px">
+      <p class="muted tiny">Leave blank to keep the current webhook. Use Remove to clear it.</p>
+      <h3>Notify me about</h3>
+      {% for event,label in events %}<div class="line"><label for="{{event}}">{{label}}</label>
+      <input type="checkbox" id="{{event}}" name="{{event}}" {% if cfg[event] %}checked{% endif %}></div>{% endfor %}
+      <p><button class="primary" type="submit">Save settings</button></p></form>
+      <div class="fields"><form method="post" action="{{url_for('test_discord')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button type="submit" {% if not configured %}disabled{% endif %}>Send test notification</button></form>
+      <form method="post" action="{{url_for('remove_discord')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button type="submit" class="danger" {% if not configured %}disabled{% endif %}>Remove webhook</button></form></div>
+      </section>""", cfg=cfg, configured=bool(cfg['webhook_cipher']),
+                events=[('new_request','New removal requests'),('approved','Approved requests'),
+                        ('rejected','Rejected requests'),('review','Requests needing manual review')])
+
+
+@app.post('/admin/discord/save')
+@require_login
+def save_discord():
+    csrf_check()
+    if session['role'] != 'admin':
+        abort(403)
+    value = request.form.get('webhook', '').strip()
+    cfg = discord_config()
+    encrypted = cfg['webhook_cipher']
+    if value:
+        try:
+            encrypted = fernet.encrypt(validate_discord_webhook(value).encode())
+        except ValueError:
+            flash('Invalid Discord webhook URL. Settings were not saved.')
+            return redirect(url_for('discord_notifications'))
+    enabled = int('enabled' in request.form)
+    if enabled and not encrypted:
+        flash('Add a Discord webhook before enabling notifications.')
+        return redirect(url_for('discord_notifications'))
+    flags = [int(event in request.form) for event in _DISCORD_EVENTS]
+    with conn() as c:
+        c.execute("""UPDATE discord_settings SET webhook_cipher=?, enabled=?,
+                     new_request=?,approved=?,rejected=?,review=? WHERE id=1""",
+                  (encrypted, enabled, *flags))
+    flash('Discord settings saved.')
+    return redirect(url_for('discord_notifications'))
+
+
+@app.post('/admin/discord/remove')
+@require_login
+def remove_discord():
+    csrf_check()
+    if session['role'] != 'admin':
+        abort(403)
+    with conn() as c:
+        c.execute('UPDATE discord_settings SET webhook_cipher=NULL,enabled=0 WHERE id=1')
+    flash('Discord webhook removed and notifications disabled.')
+    return redirect(url_for('discord_notifications'))
+
+
+@app.post('/admin/discord/test')
+@require_login
+def test_discord():
+    csrf_check()
+    if session['role'] != 'admin':
+        abort(403)
+    cfg = discord_config()
+    if not cfg['webhook_cipher']:
+        flash('Configure a webhook first.')
+        return redirect(url_for('discord_notifications'))
+    # Serialize cooldown claims across workers before any network request.
+    # Count failed attempts too: prevents using the test button to flood Discord.
+    now = int(time.time())
+    with conn() as c:
+        c.execute('BEGIN IMMEDIATE')
+        updated = c.execute('UPDATE discord_test_limits SET last_attempt=? WHERE id=1 AND last_attempt <= ?',
+            (now, now - DISCORD_TEST_COOLDOWN_SECONDS)).rowcount
+    if not updated:
+        flash('Please wait 60 seconds between Discord test notifications.')
+        return redirect(url_for('discord_notifications'))
+    try:
+        url = fernet.decrypt(cfg['webhook_cipher']).decode()
+        ok = discord_send(url, 'Your Vetoarr Discord webhook is working.', title='Test notification')
+        flash('Discord test notification sent.' if ok else 'Discord test failed. Check your webhook and server logs.')
+    except (InvalidToken, UnicodeDecodeError):
+        flash('Stored webhook could not be decrypted.')
+    return redirect(url_for('discord_notifications'))
+
+
 @app.post('/admin/revoke-sessions')
 @require_login
 def revoke_sessions():
@@ -724,6 +909,10 @@ def submit_bulk():
                 except sqlite3.IntegrityError:
                     # Another writer has already created an active request.
                     continue
+    if created_ids and session['role'] != 'admin':
+        with conn() as c:
+            created_rows = c.execute('SELECT * FROM requests WHERE id IN (' + ','.join('?' for _ in created_ids) + ')', created_ids).fetchall()
+        discord_notify('new_request', created_rows)
     if session['role'] == 'admin':
         outcomes = [process_approval(req_id, session['user']) for req_id in created_ids]
         flash(f'{created} request(s) recorded; {outcomes.count("approved")} approved, {outcomes.count("pending")} pending, {outcomes.count("review")} need review. Verify Maintainerr before retrying any review item.')
@@ -764,6 +953,9 @@ def submit_request():
             outcome = process_approval(new_id, session['user'])
             flash('Owner request: ' + ('approved and Maintainerr membership confirmed' if outcome == 'approved' else 'not completed; check status before any retry'))
         else:
+            with conn() as c:
+                row = c.execute('SELECT * FROM requests WHERE id=?', (new_id,)).fetchone()
+            discord_notify('new_request', [row])
             flash('Request submitted for administrator approval')
     return redirect(url_for('index'))
 
@@ -803,11 +995,17 @@ def process_approval(req_id, actor):
             c.execute('UPDATE requests SET status=?, error=? WHERE id=? AND status=\'processing\'',
                       ('review' if call_attempted else 'pending',
                        'Check Maintainerr membership before any retry' if call_attempted else 'Preflight validation failed; check Plex and Maintainerr settings', req_id))
+        if call_attempted:
+            with conn() as c:
+                changed = c.execute('SELECT * FROM requests WHERE id=?', (req_id,)).fetchone()
+            discord_notify('review', [changed])
         return 'review' if call_attempted else 'pending'
     with conn() as c:
         c.execute("UPDATE requests SET status='approved',error=NULL WHERE id=? AND status='processing'", (req_id,))
+    with conn() as c:
+        changed = c.execute('SELECT * FROM requests WHERE id=?', (req_id,)).fetchone()
+    discord_notify('approved', [changed])
     return 'approved'
-
 
 
 
@@ -827,6 +1025,9 @@ def decide(req_id):
             if row is None or row['status'] != 'pending':
                 abort(409)
             c.execute("UPDATE requests SET status='rejected',decided_at=CURRENT_TIMESTAMP,decided_by=? WHERE id=?", (session['user'], req_id))
+        with conn() as c:
+            changed = c.execute('SELECT * FROM requests WHERE id=?', (req_id,)).fetchone()
+        discord_notify('rejected', [changed])
         flash('Request rejected')
     else:
         outcome = process_approval(req_id, session['user'])
@@ -857,6 +1058,9 @@ def reconcile(req_id):
         with conn() as c:
             c.execute("""UPDATE requests SET status='approved',error=NULL
                        WHERE id=? AND status='review'""", (req_id,))
+        with conn() as c:
+            changed = c.execute('SELECT * FROM requests WHERE id=?', (req_id,)).fetchone()
+        discord_notify('approved', [changed])
         flash('Membership found. Approval recorded; verify Maintainerr deletion schedule.')
     else:
         # Absence does not prove that a previous POST was never processed.
