@@ -156,7 +156,7 @@ def csrf_check():
 
 
 def plex_headers(token=None):
-    h = {'Accept': 'application/json', 'X-Plex-Product': 'Media Approval Portal',
+    h = {'Accept': 'application/json', 'X-Plex-Product': 'Vetoarr',
          'X-Plex-Client-Identifier': PLEX_SSO_CLIENT_ID}
     if token:
         h['X-Plex-Token'] = token
@@ -281,7 +281,7 @@ def security_headers(resp):
 def service_json(method, url, *, token=False, **kwargs):
     headers = {'Accept': 'application/json'}
     if token:
-        headers['X-Plex-Product'] = 'Media Approval Portal'
+        headers['X-Plex-Product'] = 'Vetoarr'
         headers['X-Plex-Client-Identifier'] = 'media-approval-portal-unraid'
     if token:
         headers['X-Plex-Token'] = PLEX_TOKEN
@@ -393,7 +393,7 @@ def start_plex():
     session['pin_nonce'] = secrets.token_urlsafe(24)
     forward = 'https://' + PORTAL_HOST + url_for('plex_callback') + '?nonce=' + quote(session['pin_nonce'], safe='')
     args = urlencode({'clientID': PLEX_SSO_CLIENT_ID, 'code': pin_code,
-                      'context[device][product]': 'Media Approval Portal', 'forwardUrl': forward})
+                      'context[device][product]': 'Vetoarr', 'forwardUrl': forward})
     # Do not redirect a POST form submission across origins. Browsers enforce
     # form-action on the entire form navigation, including redirect targets.
     # Instead render a local confirmation with a normal user-activated link.
@@ -403,7 +403,7 @@ def start_plex():
       <h1>Continue to <span>Plex</span></h1>
       <p class="muted">Your secure Plex sign-in request is ready. Continue to Plex to authorize access.</p>
       <p><a class="pill primary big" href="{{plex_auth_url}}" rel="noreferrer">Continue to Plex ↗</a></p>
-      <p class="muted tiny">After authorization, Plex will return you to Media Cleanup.</p>
+      <p class="muted tiny">After authorization, Plex will return you to Vetoarr.</p>
       </section>""", plex_auth_url=plex_auth_url)
 
 

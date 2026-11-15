@@ -3,7 +3,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Show how you're running Media Approval Portal. Do not post real tokens, `.env`, private URLs, IP addresses, or screenshots of other users' requests.
+        Show how you're running Vetoarr. Do not post real tokens, `.env`, private URLs, IP addresses, or screenshots of other users' requests.
   - type: textarea
     id: setup
     attributes:

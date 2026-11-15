@@ -1,12 +1,12 @@
-# Media Approval Portal
+# Vetoarr
 
 
-[![Tests and container security](https://github.com/tbutz12/MediaApprovalPortal/actions/workflows/ci.yml/badge.svg)](https://github.com/tbutz12/MediaApprovalPortal/actions/workflows/ci.yml)
+[![Tests and container security](https://github.com/tbutz12/Vetoarr/actions/workflows/ci.yml/badge.svg)](https://github.com/tbutz12/Vetoarr/actions/workflows/ci.yml)
 
 
 **Let people on your Plex server request movies and shows for deletion without giving them access to your media management tools.**
 
-Media Approval Portal lets the people you share your Plex server with request movies and TV shows to be removed. They sign in with Plex, find what they want removed, and send a request. You decide what gets deleted without giving anyone access to your files, Radarr, Sonarr, or Maintainerr. Requests you submit as the server owner are approved automatically, but still go through the same checks.
+Vetoarr lets the people you share your Plex server with request movies and TV shows to be removed. They sign in with Plex, find what they want removed, and send a request. You decide what gets deleted without giving anyone access to your files, Radarr, Sonarr, or Maintainerr. Requests you submit as the server owner are approved automatically, but still go through the same checks.
 
 Once a request is approved, the portal adds the title to the right **Maintainerr** collection. Maintainerr handles the deletion schedule. The portal never deletes files directly.
 
@@ -69,13 +69,17 @@ Plex account -> Plex SSO -> Verify access to your Plex server
 
 The sample `.env.example` and `compose.yaml` are **templates**. Use your own addresses, credentials, Plex libraries, and Maintainerr collection IDs. Do not publish `.env` or the SQLite database.
 
+## Official Docker image
+
+For the first Vetoarr-branded source release, use `ghcr.io/tbutz12/vetoarr:1.0.1` once its GitHub Actions publish workflow has passed and the package has been made public. The earlier `v1.0.0` Git tag and Docker image are preserved as the pre-rename release.
+
 ## Installation
 
 1. Clone the repository and create a private environment file:
 
    ```bash
-   git clone https://github.com/tbutz12/MediaApprovalPortal.git
-   cd MediaApprovalPortal
+   git clone https://github.com/tbutz12/Vetoarr.git
+   cd Vetoarr
    cp .env.example .env
    ```
 
@@ -85,10 +89,10 @@ The sample `.env.example` and `compose.yaml` are **templates**. Use your own add
 
    ```bash
    docker build --pull --no-cache -f Dockerfile.alpine \
-     -t local/media-approval-portal:dashboard-ui-fixed .
+     -t vetoarr:local .
 
    docker run --rm --entrypoint python \
-     local/media-approval-portal:dashboard-ui-fixed /app/test_runtime.py
+     vetoarr:local /app/test_runtime.py
    ```
 
 5. Deploy the container with persistent `/data` storage and your private `.env` file. The app listens on port `8080` inside Docker; map it to a local port on your host. Put it behind HTTPS and do not forward the app port directly from the internet.
@@ -160,7 +164,7 @@ See [SECURITY.md](SECURITY.md) for deployment safeguards and private vulnerabili
 
 ## A note about deletion
 
-Media Approval Portal handles requests and approvals. Maintainerr and your media management apps handle the actual deletion. An `approved` request means Maintainerr received it; it does **not** mean the file is already gone or that Plex, Radarr, Sonarr, or Seerr have finished updating.
+Vetoarr handles requests and approvals. Maintainerr and your media management apps handle the actual deletion. An `approved` request means Maintainerr received it; it does **not** mean the file is already gone or that Plex, Radarr, Sonarr, or Seerr have finished updating.
 
 ## Contributing
 

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Vetoarr">
+  <rect width="256" height="256" rx="52" fill="#15191f"/>
+  <path d="M58 64 L112 183 L143 116" fill="none" stroke="#f5f6f8" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M149 154 L177 181 L209 143" fill="none" stroke="#56c39a" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
