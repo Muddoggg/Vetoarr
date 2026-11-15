@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Container version="2">
+  <Name>MediaApprovalPortal</Name>
+  <Repository>ghcr.io/tbutz12/mediaapprovalportal:latest</Repository>
+  <Registry>https://github.com/tbutz12/MediaApprovalPortal/pkgs/container/mediaapprovalportal</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Project>https://github.com/tbutz12/MediaApprovalPortal</Project>
+  <Support>https://github.com/tbutz12/MediaApprovalPortal/issues</Support>
+  <ReadMe>https://raw.githubusercontent.com/tbutz12/MediaApprovalPortal/main/README.md</ReadMe>
+  <TemplateURL>https://raw.githubusercontent.com/tbutz12/MediaApprovalPortal/main/templates/media-approval-portal.xml</TemplateURL>
+  <Overview>Let people on your Plex server request media removal. Plex authentication, owner approvals and Maintainerr integration. The portal does not directly delete files.</Overview>
+  <Description>Sign in using Plex to request removal of movies or whole TV shows. Shared users submit requests for owner review, while server-owner requests are approved automatically. Approved media is routed to your Maintainerr collections for scheduled deletion. Requires a Plex server, owner token, Maintainerr collections and an HTTPS reverse proxy for internet-facing installations. WARNING: approved requests can eventually delete media permanently.</Description>
+  <Category>Tools:Utilities</Category>
+  <ExtraSearchTerms>Plex Maintainerr media requests removal cleanup Radarr Sonarr</ExtraSearchTerms>
+  <WebUI>http://[IP]:[PORT:8080]</WebUI>
+  <ExtraParams>--read-only --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=128 --tmpfs=/tmp:rw,noexec,nosuid,size=16m</ExtraParams>
+  <Config Name="WebUI Port" Target="8080" Default="8085" Mode="tcp" Description="Unraid host port for the portal's HTTP interface; put behind an HTTPS reverse proxy for external access." Type="Port" Display="always" Required="true" Mask="false"/>
+  <Config Name="Persistent database" Target="/data" Default="/mnt/user/appdata/media-approval-portal" Mode="rw" Description="Persistent SQLite database and session storage. Back up before updates." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="SECRET_KEY" Target="SECRET_KEY" Default="" Description="Generate a unique secret, e.g. openssl rand -hex 32. Keep it private and stable." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="PORTAL_HOST" Target="PORTAL_HOST" Default="portal.example.com" Description="Public hostname without https:// (the configured portal host)." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="PLEX_URL" Target="PLEX_URL" Default="http://192.168.1.100:32400" Description="Reachable Plex server URL. Container names require a shared Docker network." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="PLEX_TOKEN" Target="PLEX_TOKEN" Default="" Description="Private owner Plex token; never publish or share." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="MAINTAINERR_URL" Target="MAINTAINERR_URL" Default="http://192.168.1.100:6246" Description="Reachable Maintainerr URL. Container names require a shared Docker network." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Movies collection" Target="MOVIE_COLLECTION_ID" Default="1" Description="Maintainerr collection ID for Plex Movies library." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="TV collection" Target="SHOW_COLLECTION_ID" Default="2" Description="Maintainerr collection ID for Plex TV Shows library." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Kids Movies collection" Target="KIDS_MOVIE_COLLECTION_ID" Default="3" Description="Maintainerr collection ID for Kids Movies." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="Anime Movies collection" Target="ANIME_MOVIE_COLLECTION_ID" Default="4" Description="Maintainerr collection ID for Anime Movies." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="Kids TV collection" Target="KIDS_SHOW_COLLECTION_ID" Default="5" Description="Maintainerr collection ID for Kids TV Shows." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="Anime TV collection" Target="ANIME_SHOW_COLLECTION_ID" Default="6" Description="Maintainerr collection ID for Anime TV Shows." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="Minimum deletion days" Target="MIN_DELETE_DAYS" Default="1" Description="Minimum Maintainerr deletion delay allowed by the portal." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="Database file" Target="DATABASE_PATH" Default="/data/requests.sqlite3" Description="SQLite file inside the persistent /data mount." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="Plex SSO client ID" Target="PLEX_SSO_CLIENT_ID" Default="media-approval-portal-community" Description="Stable Plex PIN client identifier; keep unchanged after first deployment." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+</Container>
