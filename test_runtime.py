@@ -28,6 +28,10 @@ import app as portal
 
 class PortalTests(unittest.TestCase):
     def setUp(self):
+        # Tests share an offline temporary SQLite file. Isolate request state so
+        # pagination fixtures do not exhaust another test user's pending quota.
+        with portal.conn() as c:
+            c.execute('DELETE FROM requests')
         self.client = portal.app.test_client()
         self.url = 'https://cleanup.tb-server.com'
         self.headers = {}
@@ -158,6 +162,49 @@ class PortalTests(unittest.TestCase):
         self.logged_in('222')
         self.assertEqual(self.req('/admin/revoke-sessions', 'POST', data={'csrf':'csrf-test'}).status_code, 403)
 
+    def test_admin_all_requests_includes_other_users(self):
+        with portal.conn() as c:
+            c.execute("INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)",
+                      ('plex:222','908901','show','Shared User Request'))
+        self.logged_in('111')
+        page = self.req('/admin/requests')
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'Shared User Request', page.data)
+        self.assertIn(b'Approve', page.data)
+        with patch.object(portal, 'plex_libraries', return_value=[]):
+            dashboard = self.req('/')
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertIn(b'/admin/requests', dashboard.data)
+        self.assertIn(b'PLEX SERVER ADMINISTRATION', dashboard.data)
+
+    def test_requester_cannot_read_all_requests(self):
+        with portal.conn() as c:
+            c.execute("INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)",
+                      ('plex:333','908902','movie','Private Request'))
+        self.logged_in('222')
+        self.assertEqual(self.req('/admin/requests').status_code, 403)
+        with patch.object(portal, 'plex_libraries', return_value=[]):
+            dashboard = self.req('/')
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertNotIn(b'Private Request', dashboard.data)
+        self.assertNotIn(b'/admin/requests', dashboard.data)
+        self.assertIn(b'YOUR SHARED PLEX LIBRARY', dashboard.data)
+
+    def test_admin_all_requests_paginates(self):
+        with portal.conn() as c:
+            for i in range(27):
+                c.execute('INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)',
+                          ('plex:222',str(909000+i),'movie',f'History item {i}'))
+        self.logged_in('111')
+        first = self.req('/admin/requests')
+        second = self.req('/admin/requests?page=2')
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertIn(b'Next', first.data)
+        self.assertNotIn(b'History item 0', first.data)
+        self.assertIn(b'History item 0', second.data)
+        self.assertEqual(self.req('/admin/requests?page=invalid').status_code, 400)
+
     def test_owner_can_view_and_revoke(self):
         self.logged_in('111')
         with patch.object(portal, 'plex_libraries', return_value=[]):
@@ -185,6 +232,22 @@ class PortalTests(unittest.TestCase):
         with portal.conn() as conn:
             row = conn.execute("SELECT status FROM requests WHERE plex_id='432100'").fetchone()
             self.assertEqual(row['status'], 'pending')
+
+    def test_bulk_request_pending_quota_still_enforced(self):
+        self.logged_in('222')
+        with portal.conn() as c:
+            for i in range(20):
+                c.execute('INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)',
+                          ('plex:222', str(950000+i), 'movie', f'Pending {i}'))
+        media = {'id': '950100', 'title': 'Over Limit', 'type': 'movie', 'section_id': '1'}
+        with patch.object(portal, 'plex_item', return_value=media), \
+             patch.object(portal, 'collection_for_item', return_value=1), \
+             patch.object(portal, 'service_json', side_effect=AssertionError('No Maintainerr calls')):
+            response = self.req('/request/bulk', 'POST', data={'csrf': 'csrf-test', 'plex_ids': ['950100']})
+        self.assertEqual(response.status_code, 429)
+        with portal.conn() as c:
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM requests WHERE requester=?', ('plex:222',)).fetchone()[0], 20)
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM requests WHERE plex_id=?', ('950100',)).fetchone()[0], 0)
 
     def test_six_library_routes(self):
         libraries = [
