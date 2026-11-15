@@ -359,6 +359,7 @@ class DiscordTests(unittest.TestCase):
         PortalTests.setUp(self)
         with portal.conn() as c:
             c.execute('UPDATE discord_settings SET webhook_cipher=NULL, enabled=0, new_request=1, approved=1, rejected=1, review=1 WHERE id=1')
+            c.execute('UPDATE discord_test_limits SET last_attempt=0 WHERE id=1')
 
     def test_discord_admin_only(self):
         self.logged_in('222')
@@ -405,6 +406,52 @@ class DiscordTests(unittest.TestCase):
         self.assertEqual(r.status_code,302)
         mocked.assert_called_once()
 
+
+    def test_discord_redirect_is_not_success(self):
+        hook='https://discord.com/api/webhooks/123456789012345678/'+'a'*60
+        for status, expected in [(204,True),(200,True),(302,False),(307,False),
+                                 (400,False),(429,False),(500,False)]:
+            reply=MagicMock(status_code=status)
+            with patch.object(portal.discord_http, 'post', return_value=reply) as posted:
+                self.assertEqual(portal.discord_send(hook, 'test'), expected)
+            self.assertFalse(posted.call_args.kwargs['allow_redirects'])
+            self.assertEqual(posted.call_args.kwargs['timeout'], (1,2))
+
+    def test_discord_http_ignores_proxy_environment(self):
+        self.assertFalse(portal.discord_http.trust_env)
+        self.assertEqual(portal.discord_http.max_redirects, 0)
+
+    def test_discord_test_button_rate_limited(self):
+        self.logged_in('111')
+        hook='https://discord.com/api/webhooks/123456789012345678/'+'a'*60
+        self.req('/admin/discord/save',method='POST',data={'csrf':'csrf-test','webhook':hook})
+        with patch.object(portal, 'discord_send', return_value=True) as sent:
+            self.assertEqual(self.req('/admin/discord/test',method='POST',data={'csrf':'csrf-test'}).status_code,302)
+            self.assertEqual(self.req('/admin/discord/test',method='POST',data={'csrf':'csrf-test'}).status_code,302)
+            sent.assert_called_once()
+        with portal.conn() as c:
+            c.execute('UPDATE discord_test_limits SET last_attempt=0 WHERE id=1')
+        with patch.object(portal, 'discord_send', return_value=True) as sent:
+            self.req('/admin/discord/test',method='POST',data={'csrf':'csrf-test'})
+            sent.assert_called_once()
+
+    def test_discord_invalid_saved_url_never_sent(self):
+        with patch.object(portal.discord_http, 'post') as posted:
+            self.assertFalse(portal.discord_send('https://evil.test/unsafe','test'))
+            posted.assert_not_called()
+
+    def test_discord_no_mentions_and_sanitized_message(self):
+        self.logged_in('111')
+        hook='https://discord.com/api/webhooks/123456789012345678/'+'a'*60
+        self.req('/admin/discord/save',method='POST',data={'csrf':'csrf-test',
+                  'webhook':hook,'enabled':'on','new_request':'on'})
+        row={'id':1,'title':'@everyone\nFake approval', 'requester':'plex:222','media_type':'movie'}
+        with patch.object(portal.discord_http, 'post', return_value=MagicMock(status_code=204)) as posted:
+            portal.discord_notify('new_request',[row])
+        body=posted.call_args.kwargs['json']
+        self.assertEqual(body['allowed_mentions'], {'parse': []})
+        self.assertNotIn('@everyone', body['embeds'][0]['description'])
+        self.assertNotIn('\n', body['embeds'][0]['description'])
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

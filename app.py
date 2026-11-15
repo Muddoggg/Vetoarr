@@ -106,6 +106,9 @@ def setup():
             rejected INTEGER NOT NULL DEFAULT 1,
             review INTEGER NOT NULL DEFAULT 1)''')
         c.execute('INSERT OR IGNORE INTO discord_settings (id) VALUES (1)')
+        c.execute('''CREATE TABLE IF NOT EXISTS discord_test_limits (
+            id INTEGER PRIMARY KEY CHECK(id=1), last_attempt INTEGER NOT NULL DEFAULT 0)''')
+        c.execute('INSERT OR IGNORE INTO discord_test_limits (id,last_attempt) VALUES (1,0)')
         c.execute("INSERT OR IGNORE INTO portal_meta VALUES ('global_epoch',0)")
         c.execute('CREATE TABLE IF NOT EXISTS auth_attempts (access_subject TEXT NOT NULL, attempted_at INTEGER NOT NULL)')
         # One-time migration: revoke sessions that were bound to Cloudflare identities.
@@ -479,6 +482,13 @@ def logout():
 # and only permit Discord's exact HTTPS webhook API endpoint (SSRF protection).
 _DISCORD_EVENTS = ('new_request', 'approved', 'rejected', 'review')
 _DISCORD_WEBHOOK_PATH = re.compile(r'/api/webhooks/[0-9]{15,25}/[A-Za-z0-9_-]{25,200}/?')
+DISCORD_TEST_COOLDOWN_SECONDS = 60
+# Dedicated session: webhook URLs contain credentials and must not use proxy
+# settings inherited from the container environment.
+discord_http = requests.Session()
+discord_http.trust_env = False
+# Explicitly prohibit redirects on every send (even though send() also sets it).
+discord_http.max_redirects = 0
 
 
 def validate_discord_webhook(value):
@@ -499,17 +509,22 @@ def discord_config():
 
 
 def discord_send(url, description, title='Vetoarr', color=5793266):
-    # No redirects or proxy inheritance; do not forward the webhook credential
-    # to other hosts. No arbitrary user mentions or rich Discord formatting.
+    # Best-effort outbound call. Never redirect a credential-bearing URL,
+    # trust environment proxy settings, or log a webhook URL or response body.
     try:
-        response = requests.post(url, json={
+        # Re-validate decrypted stored values too (defense in depth).
+        url = validate_discord_webhook(url)
+        response = discord_http.post(url, json={
             'username': 'Vetoarr',
             'allowed_mentions': {'parse': []},
             'embeds': [{'title': title[:256], 'description': description[:2000], 'color': color}],
-        }, timeout=(2, 3), allow_redirects=False, proxies={'http': '', 'https': ''})
-        response.raise_for_status()
+        }, timeout=(1, 2), allow_redirects=False)
+        # Discord normally returns 204, optionally 200. 3xx is not success.
+        if response.status_code not in (200, 204):
+            app.logger.warning('Discord notification rejected (HTTP %d)', response.status_code)
+            return False
         return True
-    except requests.RequestException as exc:
+    except (requests.RequestException, ValueError) as exc:
         app.logger.warning('Discord notification failed (%s)', type(exc).__name__)
         return False
 
@@ -526,12 +541,12 @@ def discord_notify(event, rows):
         lines = []
         for row in rows[:20]:
             # Strip mention syntax and Discord markdown from untrusted Plex titles/names.
-            title = re.sub(r'[@`*_~|<>\\]', '', str(row['title']))[:100]
+            title = re.sub(r'\s+', ' ', re.sub(r'[@`*_~|<>\\]', '', str(row['title']))).strip()[:100]
             # Use a friendly Plex username rather than the internal account ID.
             with conn() as c:
                 account = c.execute('SELECT username FROM plex_sessions WHERE plex_user_id=?',
                                     (str(row['requester']).removeprefix('plex:'),)).fetchone()
-            requester = re.sub(r'[@`*_~|<>\\]', '', str(account['username'] if account else 'Plex user'))[:60]
+            requester = re.sub(r'\s+', ' ', re.sub(r'[@`*_~|<>\\]', '', str(account['username'] if account else 'Plex user'))).strip()[:60]
             lines.append(f"#{int(row['id'])}  {title} ({row['media_type']})  |  {requester}")
         discord_send(url, '\n'.join(lines), title=labels[event],
                      color=15158332 if event in ('rejected', 'review') else 5793266)
@@ -617,13 +632,23 @@ def test_discord():
     cfg = discord_config()
     if not cfg['webhook_cipher']:
         flash('Configure a webhook first.')
-    else:
-        try:
-            url = fernet.decrypt(cfg['webhook_cipher']).decode()
-            ok = discord_send(url, 'Your Vetoarr Discord webhook is working.', title='Test notification')
-            flash('Discord test notification sent.' if ok else 'Discord test failed. Check your webhook and server logs.')
-        except (InvalidToken, UnicodeDecodeError):
-            flash('Stored webhook could not be decrypted.')
+        return redirect(url_for('discord_notifications'))
+    # Serialize cooldown claims across workers before any network request.
+    # Count failed attempts too: prevents using the test button to flood Discord.
+    now = int(time.time())
+    with conn() as c:
+        c.execute('BEGIN IMMEDIATE')
+        updated = c.execute('UPDATE discord_test_limits SET last_attempt=? WHERE id=1 AND last_attempt <= ?',
+            (now, now - DISCORD_TEST_COOLDOWN_SECONDS)).rowcount
+    if not updated:
+        flash('Please wait 60 seconds between Discord test notifications.')
+        return redirect(url_for('discord_notifications'))
+    try:
+        url = fernet.decrypt(cfg['webhook_cipher']).decode()
+        ok = discord_send(url, 'Your Vetoarr Discord webhook is working.', title='Test notification')
+        flash('Discord test notification sent.' if ok else 'Discord test failed. Check your webhook and server logs.')
+    except (InvalidToken, UnicodeDecodeError):
+        flash('Stored webhook could not be decrypted.')
     return redirect(url_for('discord_notifications'))
 
 
