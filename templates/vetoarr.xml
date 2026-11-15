@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Container version="2">
   <Name>Vetoarr</Name>
-  <Repository>ghcr.io/tbutz12/vetoarr:latest</Repository>
-  <Registry>https://github.com/tbutz12/Vetoarr/pkgs/container/vetoarr</Registry>
+  <Repository>ghcr.io/muddoggg/vetoarr:latest</Repository>
+  <Registry>https://github.com/Muddoggg/Vetoarr/pkgs/container/vetoarr</Registry>
   <Network>bridge</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Icon>https://raw.githubusercontent.com/tbutz12/Vetoarr/main/assets/icon.svg</Icon>
-  <Project>https://github.com/tbutz12/Vetoarr</Project>
-  <Support>https://github.com/tbutz12/Vetoarr/issues</Support>
-  <ReadMe>https://raw.githubusercontent.com/tbutz12/Vetoarr/main/README.md</ReadMe>
-  <TemplateURL>https://raw.githubusercontent.com/tbutz12/Vetoarr/main/templates/vetoarr.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Muddoggg/Vetoarr/main/assets/icon.svg</Icon>
+  <Project>https://github.com/Muddoggg/Vetoarr</Project>
+  <Support>https://github.com/Muddoggg/Vetoarr/issues</Support>
+  <ReadMe>https://raw.githubusercontent.com/Muddoggg/Vetoarr/main/README.md</ReadMe>
+  <TemplateURL>https://raw.githubusercontent.com/Muddoggg/Vetoarr/main/templates/vetoarr.xml</TemplateURL>
   <Overview>Let people on your Plex server request media removal. Plex authentication, owner approvals and Maintainerr integration. The portal does not directly delete files.</Overview>
   <Description>Sign in using Plex to request removal of movies or whole TV shows. Shared users submit requests for owner review, while server-owner requests are approved automatically. Approved media is routed to your Maintainerr collections for scheduled deletion. Requires a Plex server, owner token, Maintainerr collections and an HTTPS reverse proxy for internet-facing installations. WARNING: approved requests can eventually delete media permanently.</Description>
   <Category>Tools:Utilities</Category>
