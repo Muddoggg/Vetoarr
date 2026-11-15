@@ -18,7 +18,7 @@
   <WebUI>http://[IP]:[PORT:8080]</WebUI>
   <ExtraParams>--read-only --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=128 --tmpfs=/tmp:rw,noexec,nosuid,size=16m</ExtraParams>
   <Config Name="WebUI Port" Target="8080" Default="8085" Mode="tcp" Description="Unraid host port for the portal's HTTP interface; put behind an HTTPS reverse proxy for external access." Type="Port" Display="always" Required="true" Mask="false"/>
-  <Config Name="Persistent database" Target="/data" Default="/mnt/user/appdata/media-approval-portal" Mode="rw" Description="Persistent SQLite database and session storage. Back up before updates." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Persistent database" Target="/data" Default="/mnt/user/appdata/vetoarr" Mode="rw" Description="Persistent SQLite database and session storage. Back up before updates." Type="Path" Display="always" Required="true" Mask="false"/>
   <Config Name="SECRET_KEY" Target="SECRET_KEY" Default="" Description="Generate a unique secret, e.g. openssl rand -hex 32. Keep it private and stable." Type="Variable" Display="always" Required="true" Mask="true"/>
   <Config Name="PORTAL_HOST" Target="PORTAL_HOST" Default="portal.example.com" Description="Public hostname without https:// (the configured portal host)." Type="Variable" Display="always" Required="true" Mask="false"/>
   <Config Name="PLEX_URL" Target="PLEX_URL" Default="http://192.168.1.100:32400" Description="Reachable Plex server URL. Container names require a shared Docker network." Type="Variable" Display="always" Required="true" Mask="false"/>
