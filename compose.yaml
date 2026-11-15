@@ -1,0 +1,33 @@
+# ONE-CONTAINER alternative. Use only after Cloudflare proxy + NPM and edge rate limits are configured.
+services:
+  media-approval-portal:
+    build:
+      context: .
+      dockerfile: Dockerfile.alpine
+    image: local/media-approval-portal:v7-plex-only
+    container_name: media-approval-portal
+    restart: unless-stopped
+    env_file: .env
+    networks:
+      - media
+    ports:
+      # LAN-only, NOT a WAN forwarding rule. NPM forwards here.
+      - "192.168.1.26:8085:8080"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    volumes:
+      - /mnt/user/appdata/media-approval-portal:/data:rw
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health',timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+networks:
+  media:
+    external: true
