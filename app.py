@@ -274,7 +274,7 @@ def security_headers(resp):
     resp.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     resp.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
     resp.headers['Cache-Control'] = 'no-store'
-    resp.headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+    resp.headers['Content-Security-Policy'] = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
     return resp
 
 
