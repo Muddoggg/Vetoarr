@@ -130,7 +130,7 @@ class PortalTests(unittest.TestCase):
 
     def test_one_day_policy_is_configurable(self):
         self.assertEqual(portal.MIN_DELETE_DAYS, 7)  # test environment sets 7; lower bound is 1
-        source = pathlib.Path(portal.__file__).read_text()
+        source = pathlib.Path(portal.__file__).read_text(encoding="utf-8")
         self.assertIn("MIN_DELETE_DAYS = max(1,", source)
 
     def test_pin_start_requires_csrf(self):
@@ -347,6 +347,63 @@ class PortalTests(unittest.TestCase):
         with patch.object(portal, 'server_identifier', return_value='server-abc'), \
              patch.object(portal, 'plex_cloud', return_value=[{'clientIdentifier':'different-server', 'provides':'server', 'accessToken':'x'}]):
             self.assertIsNone(portal.plex_server_token('user-token'))
+
+
+class DiscordTests(unittest.TestCase):
+    # Reuse fixture helpers without inheriting all PortalTests test methods.
+    req = PortalTests.req
+    csrf = PortalTests.csrf
+    logged_in = PortalTests.logged_in
+
+    def setUp(self):
+        PortalTests.setUp(self)
+        with portal.conn() as c:
+            c.execute('UPDATE discord_settings SET webhook_cipher=NULL, enabled=0, new_request=1, approved=1, rejected=1, review=1 WHERE id=1')
+
+    def test_discord_admin_only(self):
+        self.logged_in('222')
+        self.assertEqual(self.req('/admin/discord').status_code, 403)
+        self.assertEqual(self.req('/admin/discord/save', method='POST', data={'csrf':'csrf-test'}).status_code, 403)
+        self.assertEqual(self.req('/admin/discord/test', method='POST', data={'csrf':'csrf-test'}).status_code, 403)
+        self.assertEqual(self.req('/admin/discord/remove', method='POST', data={'csrf':'csrf-test'}).status_code, 403)
+
+    def test_discord_webhook_validation(self):
+        good='https://discord.com/api/webhooks/123456789012345678/' + 'a'*60
+        self.assertEqual(portal.validate_discord_webhook(good),good)
+        for bad in ['http://discord.com/api/webhooks/123456789012345678/'+ 'a'*60,
+                    'https://discord.com.evil.test/api/webhooks/123456789012345678/'+'a'*60,
+                    'https://discord.com@evil.test/api/webhooks/123456789012345678/'+'a'*60,
+                    'https://discord.com/api/webhooks/123456789012345678/'+'a'*60+'?wait=true',
+                    'https://discord.com/api/webhooks/123456789012345678/'+'a'*60+'#frag']:
+            with self.assertRaises(ValueError): portal.validate_discord_webhook(bad)
+
+    def test_discord_saved_encrypted_and_disabled_by_default(self):
+        self.logged_in('111')
+        hook='https://discord.com/api/webhooks/123456789012345678/'+'a'*60
+        r=self.req('/admin/discord/save',method='POST',data={'csrf':'csrf-test','enabled':'on','webhook':hook,'new_request':'on'})
+        self.assertEqual(r.status_code,302)
+        cfg=portal.discord_config()
+        self.assertEqual(cfg['enabled'],1)
+        self.assertNotIn(hook.encode(),bytes(cfg['webhook_cipher']))
+        self.assertEqual(portal.fernet.decrypt(cfg['webhook_cipher']).decode(), hook)
+        self.assertNotIn(hook.encode(), self.req('/admin/discord').data)
+        self.req('/admin/discord/remove',method='POST',data={'csrf':'csrf-test'})
+        self.assertIsNone(portal.discord_config()['webhook_cipher'])
+        self.assertEqual(portal.discord_config()['enabled'],0)
+
+    def test_discord_failure_cannot_interrupt_requests(self):
+        with patch.object(portal, 'discord_send', return_value=False):
+            row={'id':1,'title':'Test','requester':'test','media_type':'movie'}
+            portal.discord_notify('new_request',[row])
+
+    def test_discord_test_button(self):
+        self.logged_in('111')
+        hook='https://discord.com/api/webhooks/123456789012345678/'+'a'*60
+        self.req('/admin/discord/save',method='POST',data={'csrf':'csrf-test','webhook':hook,'enabled':'on'})
+        with patch.object(portal, 'discord_send', return_value=True) as mocked:
+            r=self.req('/admin/discord/test',method='POST',data={'csrf':'csrf-test'})
+        self.assertEqual(r.status_code,302)
+        mocked.assert_called_once()
 
 
 if __name__ == '__main__':

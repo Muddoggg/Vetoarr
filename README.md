@@ -69,6 +69,15 @@ Plex handles account authentication, so users don't need separate credentials.
 - **Safe error handling:** If Maintainerr times out or returns an unclear result, the request is marked `review` instead of being retried automatically.
 - **Runs on your server:** Built with Flask and SQLite, packaged for Docker, and designed to run on Unraid or other Linux hosts.
 
+## Discord notifications (optional)
+
+The Plex server owner can configure Discord alerts under **Discord** in the navigation bar.
+Create a webhook in your Discord server's channel settings and paste its URL into the admin-only page.
+The webhook is stored encrypted in the existing SQLite database (using the application's `SECRET_KEY`), and isn't displayed after saving.
+Choose notifications for new shared-user requests, approvals, rejections, and requests requiring manual review. Use **Send test notification** to verify the destination or **Remove webhook** to disable and clear it.
+
+Notifications are best-effort. If Discord is unavailable, request approval and deletion processing still operate normally. The webhook URL is a secret: do not put it in your README, logs, screenshots, or public issue reports. Avoid changing `SECRET_KEY`, since that would make the stored webhook undecipherable.
+
 ## Request statuses
 
 | Status | Meaning |
