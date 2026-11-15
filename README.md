@@ -166,6 +166,34 @@ See [SECURITY.md](SECURITY.md) for deployment safeguards and private vulnerabili
 
 Vetoarr handles requests and approvals. Maintainerr and your media management apps handle the actual deletion. An `approved` request means Maintainerr received it; it does **not** mean the file is already gone or that Plex, Radarr, Sonarr, or Seerr have finished updating.
 
+
+## Development Transparency & Maintainer Background
+
+### AI-Assisted Development
+
+Vetoarr was developed with assistance from AI tools, including ChatGPT, for coding, debugging, testing, and documentation. AI was used to support development, while technical decisions, deployment, and ongoing maintenance remain my responsibility.
+
+### Maintainer Background
+
+I'm a **Senior Software Engineer with over six years of professional experience** and a **Bachelor of Science in Computer Science from the University of Pittsburgh**.
+
+My professional background includes:
+
+- **Software Engineering:** C#, .NET, Python, Flask, APIs, and application architecture
+- **DevOps & Infrastructure:** Docker, CI/CD, Jenkins, GitHub Actions, and NGINX
+- **Cloud & Databases:** AWS, Azure, SQL, Redis, and cloud integrations
+- **Security & Quality:** Authentication, authorization, automated testing, and secure application development
+
+### Open Source & Accountability
+
+As Vetoarr's maintainer, I'm responsible for reviewing changes, addressing reported bugs and security issues, and maintaining the application's releases and documentation.
+
+Every release goes through automated regression tests and Trivy container vulnerability scanning. These checks help identify problems before publication, but they do not guarantee the absence of vulnerabilities.
+
+Users can review the source code, report bugs, suggest improvements, or submit pull requests through GitHub. Security vulnerabilities should be reported privately rather than through public issues.
+
+**Repository:** https://github.com/Muddoggg/Vetoarr
+
 ## Contributing
 
 Bug reports, fixes, and suggestions are welcome. Please do not include API keys, Plex tokens, private addresses, or sensitive logs in issues. For security problems, follow [SECURITY.md](SECURITY.md).
