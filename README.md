@@ -1,4 +1,4 @@
-# Media Approval Portal
+﻿# Media Approval Portal
 
 **Plex SSO-powered, owner-controlled media cleanup for Unraid.** Shared Plex users can request the removal of movies and shows; the verified server owner can approve their requests. Owner-submitted requests use the same preflight checks for automatic approval. Approved items are handed to Maintainerr for scheduled removal.
 
@@ -66,9 +66,9 @@ The test command should end with `Ran 22 tests` and `OK` to count as a full pass
 
 ---
 
-## Release notes — v9
+## Release notes â€” v9
 
-This version builds on v8 library-specific routing, preserving the same six Maintainerr collections and existing SQLite database.
+The portal supports library-specific routing across all six Maintainerr collections while preserving the existing SQLite database.
 
 ## New behavior
 
@@ -83,7 +83,7 @@ This version builds on v8 library-specific routing, preserving the same six Main
 
 1. Stop the current portal container and back up `/mnt/user/appdata/media-approval-portal/requests.sqlite3` with its WAL/SHM files if any (or use SQLite backup API while running).
 2. Extract ZIP under `/mnt/user/appdata/`, keep this folder's name.
-3. Copy existing v8 `.env` to the new folder and verify `MIN_DELETE_DAYS=1` and all six collection ID settings. Never publish `.env`.
+3. Copy your existing portal `.env` to the new folder and verify `MIN_DELETE_DAYS=1` and all six collection ID settings. Never publish `.env`.
 4. Build, test, scan:
 
 ```bash
@@ -96,6 +96,8 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock:ro aquasec/trivy:la
 5. After all tests pass, edit the Unraid Docker container: image `local/media-approval-portal:v9-owner-history`; change just the `--env-file` path to `/mnt/user/appdata/media-approval-portal-v9-owner-auto-history/.env`. Preserve the rest of the security flags, port 8085:8080, `media` network and `/data` mapping.
 6. Log in with your Plex account and inspect **My requests**. For auto-approval live testing, use a title you intentionally want to delete (Maintainerr deletion occurs after ~1 day); verify the correct library-specific collection and status before attempting further requests.
 
-**Existing v8 library mapping:** Movies=1, TV Shows=2, Kids Movies=3, Anime Movies=4, Kids TV Shows=5, Anime TV Shows=6. No database migration is needed. You must confirm these collections still match the intended Plex libraries.
+**Maintainerr library mapping:** Movies=1, TV Shows=2, Kids Movies=3, Anime Movies=4, Kids TV Shows=5, Anime TV Shows=6. No database migration is needed. You must confirm these collections still match the intended Plex libraries.
 
 Note: The review workflow is not a guarantee of deletion; follow Maintainerr/Radarr/Plex logs for final outcomes.
+
+
