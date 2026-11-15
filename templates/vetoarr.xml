@@ -6,7 +6,7 @@
   <Network>bridge</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Icon>https://raw.githubusercontent.com/Muddoggg/Vetoarr/main/assets/icon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/Muddoggg/Vetoarr/main/assets/icon.png</Icon>
   <Project>https://github.com/Muddoggg/Vetoarr</Project>
   <Support>https://github.com/Muddoggg/Vetoarr/issues</Support>
   <ReadMe>https://raw.githubusercontent.com/Muddoggg/Vetoarr/main/README.md</ReadMe>
