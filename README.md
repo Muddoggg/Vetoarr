@@ -1,7 +1,7 @@
 # Vetoarr
 
 
-[![Tests and container security](https://github.com/tbutz12/Vetoarr/actions/workflows/ci.yml/badge.svg)](https://github.com/tbutz12/Vetoarr/actions/workflows/ci.yml)
+[![Tests and container security](https://github.com/Muddoggg/Vetoarr/actions/workflows/ci.yml/badge.svg)](https://github.com/Muddoggg/Vetoarr/actions/workflows/ci.yml)
 
 
 **Let people on your Plex server request movies and shows for deletion without giving them access to your media management tools.**
@@ -71,14 +71,14 @@ The sample `.env.example` and `compose.yaml` are **templates**. Use your own add
 
 ## Official Docker image
 
-For the first Vetoarr-branded source release, use `ghcr.io/tbutz12/vetoarr:1.0.1` once its GitHub Actions publish workflow has passed and the package has been made public. The earlier `v1.0.0` Git tag and Docker image are preserved as the pre-rename release.
+For the first Vetoarr-branded source release, use `ghcr.io/muddoggg/vetoarr:1.0.1` once its GitHub Actions publish workflow has passed and the package has been made public. The earlier `v1.0.0` Git tag and Docker image are preserved as the pre-rename release.
 
 ## Installation
 
 1. Clone the repository and create a private environment file:
 
    ```bash
-   git clone https://github.com/tbutz12/Vetoarr.git
+   git clone https://github.com/Muddoggg/Vetoarr.git
    cd Vetoarr
    cp .env.example .env
    ```
