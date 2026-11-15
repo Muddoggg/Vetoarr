@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <CommunityApplications>
   <Profile>Vetoarr allows people who share your Plex server to request movie and TV show removal. The server owner approves requests, and Maintainerr schedules downstream deletion. Maintained by tbutz12. For documentation and support, visit the project's GitHub repository and Issues page.</Profile>
-  <Icon>https://raw.githubusercontent.com/Muddoggg/Vetoarr/main/assets/icon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/Muddoggg/Vetoarr/main/assets/icon.png</Icon>
   <WebPage>https://github.com/Muddoggg/Vetoarr</WebPage>
 </CommunityApplications>
