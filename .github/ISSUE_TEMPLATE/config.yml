@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Installation and setup questions
-    url: https://github.com/tbutz12/MediaApprovalPortal/discussions/categories/q-a
+    url: https://github.com/tbutz12/Vetoarr/discussions/categories/q-a
     about: Ask for help with Plex, Maintainerr, Docker, or Unraid configuration.
   - name: Security vulnerability reports
-    url: https://github.com/tbutz12/MediaApprovalPortal/security/policy
+    url: https://github.com/tbutz12/Vetoarr/security/policy
     about: Please report security vulnerabilities privately. Do not disclose exploits or secrets in public issues.

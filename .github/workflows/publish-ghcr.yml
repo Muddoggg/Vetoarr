@@ -1,4 +1,5 @@
-name: Publish versioned Docker image
+
+name: Publish Vetoarr Docker image
 
 on:
   push:
@@ -7,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Existing Git tag to publish, for example v1.0.0'
+        description: 'Existing Git tag to publish (e.g. v1.0.1)'
         required: true
         type: string
 
@@ -16,47 +17,56 @@ permissions:
   packages: write
 
 concurrency:
-  group: publish-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+  group: vetoarr-release-publishing
   cancel-in-progress: false
 
 jobs:
   publish:
-    name: Test, scan and publish GHCR
+    name: Test, scan and publish Vetoarr
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
-      IMAGE: ghcr.io/${{ github.repository_owner }}/mediaapprovalportal
+      IMAGE: ghcr.io/${{ github.repository_owner }}/vetoarr
+
     steps:
+      - name: Validate release tag syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected stable SemVer, e.g. v1.0.1" >&2
+            exit 1
+          fi
+
       - name: Check out exact release tag
         uses: actions/checkout@v4
         with:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
-      - name: Validate immutable source tag
+      - name: Verify release commit
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "Expected a stable SemVer tag such as v1.0.0" >&2
-            exit 1
-          fi
+
           git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
           test "$(git rev-parse HEAD)" = "$(git rev-list -n 1 "$RELEASE_TAG")"
+
           echo "Building $RELEASE_TAG from $(git rev-parse HEAD)"
 
-      - name: Build Docker image
-        run: docker build --pull -f Dockerfile.alpine -t mediaapprovalportal:release .
+      - name: Build release image
+        run: docker build --pull -f Dockerfile.alpine -t vetoarr:release .
 
-      - name: Run regression tests
-        run: docker run --rm --entrypoint python mediaapprovalportal:release /app/test_runtime.py
+      - name: Run Python regression tests
+        run: docker run --rm --entrypoint python vetoarr:release /app/test_runtime.py
 
       - name: Scan image with Trivy (HIGH and CRITICAL)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
-          image-ref: mediaapprovalportal:release
+          image-ref: vetoarr:release
           scanners: vuln
           vuln-type: os,library
           severity: HIGH,CRITICAL
@@ -71,14 +81,42 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish the tested image
+      - name: Publish versioned image
         shell: bash
         run: |
           set -euo pipefail
+
           IMAGE="${IMAGE,,}"
           VERSION="${RELEASE_TAG#v}"
-          docker tag mediaapprovalportal:release "$IMAGE:$VERSION"
+
+          docker tag vetoarr:release "$IMAGE:$VERSION"
           docker push "$IMAGE:$VERSION"
-          docker tag mediaapprovalportal:release "$IMAGE:latest"
-          docker push "$IMAGE:latest"
-          echo "Published $IMAGE:$VERSION and $IMAGE:latest" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Published $IMAGE:$VERSION" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish latest if newest stable version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE="${IMAGE,,}"
+
+          # Refresh tags to include versions created during this run.
+          git fetch --force origin '+refs/tags/*:refs/tags/*'
+
+          NEWEST_TAG=$(
+            git tag --list |
+            grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' |
+            sort -V |
+            tail -n 1
+          )
+
+          if [[ "$RELEASE_TAG" == "$NEWEST_TAG" ]]; then
+            docker tag vetoarr:release "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+
+            echo "Updated $IMAGE:latest to $RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Skipped latest: $NEWEST_TAG is newer than $RELEASE_TAG"
+            echo "Skipped latest; newest stable tag is $NEWEST_TAG" >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -1,11 +1,11 @@
 # ONE-CONTAINER alternative. Use only after Cloudflare proxy + NPM and edge rate limits are configured.
 services:
-  media-approval-portal:
+  vetoarr:
     build:
       context: .
       dockerfile: Dockerfile.alpine
-    image: media-approval-portal:local
-    container_name: media-approval-portal
+    image: vetoarr:local
+    container_name: vetoarr
     restart: unless-stopped
     env_file: .env
     networks:
