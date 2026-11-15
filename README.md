@@ -41,3 +41,26 @@ Note: The review workflow is not a guarantee of deletion; follow Maintainerr/Rad
 * **Deployment:** The public Compose example binds only loopback; customize it safely for your network. Your existing Unraid port mapping and .env are not modified by this source update.
 
 **Verification status:** This security-hardening patch is not audited or verified on a live deployment. Build the image, run tests and Trivy, and inspect Maintainerr's `libraryId` before switching a production container.
+
+## Security verification
+
+**Last verified: November 15, 2026**
+
+| Security check | Result |
+|---|---|
+| Automated regression and security tests | **26/26 passed** |
+| Trivy HIGH vulnerabilities | **0 detected** |
+| Trivy CRITICAL vulnerabilities | **0 detected** |
+| Gitleaks secret scanning | **0 findings** |
+| SQLite duplicate-request protection | **Passed** |
+| Cloudflare Plex login rate limiting | **Active** |
+| External direct-origin IPv4 test | **Filtered** |
+
+The Trivy results apply to the tested Docker image
+`local/media-approval-portal:security-hardening`.
+
+See [Detailed Security Testing Results](SECURITY_TESTING.md)
+for test coverage, scan evidence, and limitations.
+
+These checks do not constitute an independent penetration test
+or guarantee the absence of vulnerabilities.
