@@ -37,6 +37,26 @@ Plex account -> Plex SSO -> Verify access to your Plex server
                     Scheduled downstream deletion
 ```
 
+## Screenshots
+
+### Admin Dashboard
+
+Browse Plex libraries, search for media, and manage removal requests.
+
+![Vetoarr Admin Dashboard](screenshots/vetoarr_1.png)
+
+### Plex Sign-In
+
+Users sign in using their existing Plex account.
+
+![Vetoarr Sign-In](screenshots/vetoarr_3.png)
+
+### Plex SSO Authentication
+
+Plex handles account authentication, so users don't need separate credentials.
+
+![Vetoarr Plex SSO](screenshots/vetoarr_2.png)
+
 ## Features
 
 - **Sign in with Plex:** No new accounts or passwords. Users must have access to your Plex server.
