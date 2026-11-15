@@ -108,6 +108,16 @@ def setup():
             c.execute('DELETE FROM auth_attempts')
         c.execute('CREATE INDEX IF NOT EXISTS idx_auth_attempts_time ON auth_attempts(attempted_at)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_requests_requester ON requests(requester,status)')
+        # Migration guard: never discard/merge potentially destructive requests.
+        duplicate = c.execute("""SELECT plex_id, COUNT(*) AS n FROM requests
+            WHERE status IN ('pending','processing','approved','review')
+            GROUP BY plex_id HAVING COUNT(*) > 1 LIMIT 1""").fetchone()
+        if duplicate is not None:
+            raise RuntimeError('Duplicate active requests detected; back up and resolve manually before starting')
+        # SQLite enforces the uniqueness rule even across simultaneous workers.
+        c.execute("""CREATE UNIQUE INDEX IF NOT EXISTS uq_requests_active_plex_media
+            ON requests(plex_id)
+            WHERE status IN ('pending','processing','approved','review')""")
     if os.path.exists(DB):
         os.chmod(DB, 0o600)
 
@@ -319,10 +329,17 @@ def plex_item(media_id, *, user_scoped=True):
             'type': item['type'], 'section_id': section_id}
 
 
-def check_collection(collection_id, expected_type):
+def check_collection(collection_id, expected_type, expected_library_id):
     collection = service_json('GET', MAINTAINERR_URL + f'/api/collections/collection/{collection_id}')
     if not isinstance(collection, dict):
         raise ValueError('Maintainerr collection is missing')
+    # The Maintainerr libraryId must match Plex's verified librarySectionID.
+    # Maintainerr documents libraryId as a string; accept a numeric JSON int as well.
+    library_id = collection.get('libraryId')
+    if (type(library_id) not in (str, int)
+            or not re.fullmatch(r'[0-9]{1,10}', str(library_id))
+            or str(int(library_id)) != str(int(expected_library_id))):
+        raise ValueError('Maintainerr collection libraryId does not match Plex section')
     # Fail closed: unknown/empty settings or unexpectedly dangerous zero-day timer.
     days = collection.get('deleteAfterDays')
     if (collection.get('type') != expected_type or collection.get('isActive') is not True
@@ -674,10 +691,14 @@ def submit_bulk():
         for item in items:
             existing = c.execute("SELECT 1 FROM requests WHERE plex_id=? AND status IN ('pending','processing','approved','review')", (item['id'],)).fetchone()
             if not existing:
-                c.execute('INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)',
-                          (session['user'], item['id'], item['type'], item['title']))
-                created += 1
-                created_ids.append(c.execute('SELECT last_insert_rowid()').fetchone()[0])
+                try:
+                    c.execute('INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)',
+                              (session['user'], item['id'], item['type'], item['title']))
+                    created += 1
+                    created_ids.append(c.execute('SELECT last_insert_rowid()').fetchone()[0])
+                except sqlite3.IntegrityError:
+                    # Another writer has already created an active request.
+                    continue
     if session['role'] == 'admin':
         outcomes = [process_approval(req_id, session['user']) for req_id in created_ids]
         flash(f'{created} request(s) recorded; {outcomes.count("approved")} approved, {outcomes.count("pending")} pending, {outcomes.count("review")} need review. Verify Maintainerr before retrying any review item.')
@@ -699,6 +720,7 @@ def submit_request():
         return redirect(url_for('index'))
     new_id = None
     with conn() as c:
+        c.execute('BEGIN IMMEDIATE')
         # Rate-limit portal requests and cap the per-user outstanding count.
         count = c.execute("SELECT count(*) FROM requests WHERE requester=? AND status IN ('pending','processing','review')", (session['user'],)).fetchone()[0]
         if count >= 20:
@@ -707,8 +729,11 @@ def submit_request():
         if existing:
             flash('This item already has an active or previously approved request')
         else:
-            c.execute('INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)', (session['user'], item['id'], item['type'], item['title']))
-            new_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
+            try:
+                c.execute('INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)', (session['user'], item['id'], item['type'], item['title']))
+                new_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
+            except sqlite3.IntegrityError:
+                flash('This item already has an active or previously approved request')
     if new_id is not None:
         if session['role'] == 'admin':
             outcome = process_approval(new_id, session['user'])
@@ -737,7 +762,7 @@ def process_approval(req_id, actor):
         if current['type'] != row['media_type'] or current['title'] != row['title']:
             raise ValueError('Plex item no longer matches the original request')
         collection_id = collection_for_item(current, user_scoped=False)
-        check_collection(collection_id, row['media_type'])
+        check_collection(collection_id, row['media_type'], current['section_id'])
         if has_membership(collection_id, row['plex_id']):
             raise ValueError('Item already belongs to the deletion collection; inspect manually')
         # API may perform the action even when the response is lost; never blindly retry.

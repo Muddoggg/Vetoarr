@@ -2,6 +2,8 @@
 import os
 import pathlib
 import tempfile
+import sqlite3
+import threading
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -62,6 +64,51 @@ class PortalTests(unittest.TestCase):
             'X-Forwarded-User': 'owner'})
         self.assertIn(r.status_code, (302, 403, 405))
         self.assertNotEqual(r.status_code, 200)
+
+    def test_db_rejects_duplicate_active_requests(self):
+        with portal.conn() as c:
+            c.execute("INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)",
+                      ('plex:222','801234','movie','Example'))
+        with self.assertRaises(sqlite3.IntegrityError):
+            with portal.conn() as c:
+                c.execute("INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)",
+                          ('plex:333','801234','movie','Example'))
+
+    def test_rejected_media_can_be_requested_again(self):
+        with portal.conn() as c:
+            c.execute("INSERT INTO requests (requester,plex_id,media_type,title,status) VALUES (?,?,?,?,?)",
+                      ('plex:222','801235','movie','Example','rejected'))
+            c.execute("INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)",
+                      ('plex:333','801235','movie','Example'))
+
+    def test_concurrent_db_inserts_only_one_wins(self):
+        barrier = threading.Barrier(2)
+        results = []
+        def writer(uid):
+            barrier.wait()
+            try:
+                with portal.conn() as c:
+                    c.execute("INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)",
+                              (uid,'801236','show','Same media'))
+                results.append('ok')
+            except sqlite3.IntegrityError:
+                results.append('duplicate')
+        a = threading.Thread(target=writer,args=('plex:222',))
+        b = threading.Thread(target=writer,args=('plex:333',))
+        a.start();b.start();a.join();b.join()
+        self.assertCountEqual(results,['ok','duplicate'])
+
+    def test_collection_library_id_must_match(self):
+        configured = {'id':5,'libraryId':'12','type':'show','isActive':True,
+                      'arrAction':0,'deleteAfterDays':7}
+        with patch.object(portal, 'service_json', return_value=configured):
+            self.assertEqual(portal.check_collection(5,'show','12')['id'],5)
+            with self.assertRaises(ValueError):
+                portal.check_collection(5,'show','13')
+        for bad in (None, '', '0', True):
+            with self.subTest(libraryId=bad), patch.object(portal,'service_json',return_value={**configured,'libraryId':bad}):
+                with self.assertRaises(ValueError):
+                    portal.check_collection(5,'show','12')
 
     def test_unauthed_approval_denied(self):
         r = self.req('/decide/1', 'POST', data={'csrf': 'whatever', 'decision': 'approve'})

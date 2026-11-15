@@ -4,15 +4,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.alpine
-    image: local/media-approval-portal:v7-plex-only
+    image: media-approval-portal:local
     container_name: media-approval-portal
     restart: unless-stopped
     env_file: .env
     networks:
       - media
     ports:
-      # LAN-only, NOT a WAN forwarding rule. NPM forwards here.
-      - "192.168.1.26:8085:8080"
+      # Loopback only. For remote NPM, use an isolated private network and firewall.
+      - "127.0.0.1:8085:8080"
     read_only: true
     cap_drop: [ALL]
     security_opt:
@@ -21,7 +21,7 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
     volumes:
-      - /mnt/user/appdata/media-approval-portal:/data:rw
+      - ./data:/data:rw
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health',timeout=3)"]
       interval: 30s
