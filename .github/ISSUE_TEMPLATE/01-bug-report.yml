@@ -1,0 +1,71 @@
+name: Bug report
+description: Report a reproducible problem with Media Approval Portal
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Do not include Plex tokens, cookies, `.env`, private hostnames, public IP addresses, or user details. Report security vulnerabilities privately using the repository's Security policy, not an issue.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Plex sign-in and permissions
+        - Media search or library browsing
+        - Request submission or history
+        - Owner approval and review
+        - Maintainerr integration
+        - Docker or installation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the issue and what you expected instead.
+      placeholder: The request stayed pending after...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Sign in with a test Plex account
+        2. Open ...
+        3. Click ...
+        4. See ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Portal version or commit
+      placeholder: Commit SHA or image tag
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Deployment platform
+      options:
+        - Unraid Docker
+        - Docker Compose
+        - Other Docker host
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant sanitized logs or screenshots
+      description: Remove session cookies, authorization headers, Plex PINs, tokens, usernames, and private addresses before posting.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked existing issues for duplicates.
+          required: true
+        - label: I removed secrets and private user information from this report.
+          required: true
