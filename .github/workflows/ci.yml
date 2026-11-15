@@ -1,0 +1,48 @@
+name: Tests and container security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression-tests:
+    name: Python regression tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Build test image
+        run: docker build --pull --file Dockerfile.alpine --tag media-approval-portal:ci .
+
+      - name: Run regression tests
+        run: docker run --rm --entrypoint python media-approval-portal:ci /app/test_runtime.py
+
+  trivy-image-scan:
+    name: Trivy image scan (High and Critical)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Build image for scanning
+        run: docker build --pull --file Dockerfile.alpine --tag media-approval-portal:ci .
+
+      - name: Scan OS and Python packages
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: media-approval-portal:ci
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          format: table
+          exit-code: '1'
