@@ -197,3 +197,9 @@ Users can review the source code, report bugs, suggest improvements, or submit p
 ## Contributing
 
 Bug reports, fixes, and suggestions are welcome. Please do not include API keys, Plex tokens, private addresses, or sensitive logs in issues. For security problems, follow [SECURITY.md](SECURITY.md).
+
+## Support the Project
+
+Vetoarr is free and open source. If you find it useful, you can support its continued development.
+
+[![Buy Me a Coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://buymeacoffee.com/tristinb)
