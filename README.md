@@ -1,4 +1,4 @@
-﻿# Media Approval Portal
+# Media Approval Portal
 
 **Plex SSO-powered, owner-controlled media cleanup for Unraid.** Shared Plex users can request the removal of movies and shows; the verified server owner can approve their requests. Owner-submitted requests use the same preflight checks for automatic approval. Approved items are handed to Maintainerr for scheduled removal.
 
@@ -66,8 +66,7 @@ The test command should end with `Ran 22 tests` and `OK` to count as a full pass
 
 ---
 
-## Release notes â€” v9
-
+## Release notes - v9
 The portal supports library-specific routing across all six Maintainerr collections while preserving the existing SQLite database.
 
 ## New behavior
