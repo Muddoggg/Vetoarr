@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a change or new capability
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Explain the problem this feature would solve. For general brainstorming, use Discussions > Ideas.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      placeholder: When several users request the same title, ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe what the portal should do from the user's point of view.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part would change?
+      options:
+        - Plex authentication or permissions
+        - Library browsing and search
+        - Requests and approvals
+        - Maintainerr routing
+        - User interface
+        - Deployment and operations
+        - Documentation
+        - Other
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Risks or alternatives
+      description: Include any effects on deletion safety, privacy, or access control.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched for an existing issue or discussion about this.
+          required: true

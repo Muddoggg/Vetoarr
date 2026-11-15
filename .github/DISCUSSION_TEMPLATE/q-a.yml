@@ -1,0 +1,36 @@
+title: "[Help] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask setup and usage questions here. Please remove all tokens, cookies, Plex PINs, private IPs, user names, and secrets before sharing configuration or logs. Use Issues for reproducible software bugs and private vulnerability reporting for security problems.
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      options:
+        - Installation or Docker
+        - Plex SSO and library access
+        - Maintainerr collections
+        - Requests and approvals
+        - Reverse proxy and HTTPS
+        - General usage
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: What do you need help with?
+      placeholder: Explain what you are trying to configure and what isn't working.
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: Include steps or sanitized logs if helpful.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Unraid version, Docker image tag, or OS (no addresses or secrets)

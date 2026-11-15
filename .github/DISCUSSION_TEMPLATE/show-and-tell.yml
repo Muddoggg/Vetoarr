@@ -1,0 +1,21 @@
+title: "[Setup] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Show how you're running Media Approval Portal. Do not post real tokens, `.env`, private URLs, IP addresses, or screenshots of other users' requests.
+  - type: textarea
+    id: setup
+    attributes:
+      label: Describe your setup
+      description: Docker host, Plex/Maintainerr configuration, and relevant reverse proxy details (without credentials).
+    validations:
+      required: true
+  - type: textarea
+    id: lessons
+    attributes:
+      label: What worked well? Any lessons learned?
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or configuration examples (sanitized)

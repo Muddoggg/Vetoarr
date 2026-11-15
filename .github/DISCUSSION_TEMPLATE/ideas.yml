@@ -1,0 +1,23 @@
+title: "[Idea] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this category to explore an idea before opening a detailed feature request issue.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What's your idea?
+      description: Describe the problem and how your idea would improve the portal.
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Example workflow
+      placeholder: A shared Plex user would ...
+  - type: textarea
+    id: safety
+    attributes:
+      label: Security or deletion-safety considerations
+      description: Consider owner approval, library access, and irreversible deletes.
