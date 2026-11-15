@@ -175,7 +175,7 @@ Vetoarr was developed with assistance from AI tools, including ChatGPT, for codi
 
 ### Maintainer Background
 
-I'm a **Senior Software Engineer with over six years of professional experience** and a **Bachelor of Science in Computer Science from the University of Pittsburgh**.
+I'm a **Senior Software Engineer with over six years of professional experience**.
 
 My professional background includes:
 
