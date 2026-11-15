@@ -9,7 +9,7 @@
 
 | Check | Result | Notes |
 | --- | --- | --- |
-| Python automated tests | **26/26 PASS** | 0.445 seconds; `OK` |
+| Python automated tests | **30/30 PASS** | 0.445 seconds; `OK` |
 | Trivy HIGH vulnerabilities | **0 found** | Alpine 3.24.4 and discovered Python packages |
 | Trivy CRITICAL vulnerabilities | **0 found** | Same exact image and scan |
 | Git-history secret scan | **0 findings** | Gitleaks scanned 4 commits / ~75.40 KB |
