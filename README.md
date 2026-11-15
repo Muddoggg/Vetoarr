@@ -1,17 +1,17 @@
 # Media Approval Portal
 
-**A self-hosted, Plex-powered deletion-request and approval portal for shared media libraries.**
+**Let people on your Plex server request movies and shows for deletion without giving them access to your media management tools.**
 
-Media Approval Portal gives people who use your Plex server a straightforward way to suggest movies and TV shows for removal—without granting them access to your filesystem, Radarr, Sonarr, or Maintainerr. Users sign in with Plex, browse eligible libraries, select titles, and track their requests. The Plex server owner makes the final decision; their own requests can be approved automatically using the same safety checks.
+Media Approval Portal lets the people you share your Plex server with request movies and TV shows to be removed. They sign in with Plex, find what they want removed, and send a request. You decide what gets deleted without giving anyone access to your files, Radarr, Sonarr, or Maintainerr. Requests you submit as the server owner are approved automatically, but still go through the same checks.
 
-Approved titles are handed to **Maintainerr** for scheduled deletion. The portal does not delete files itself.
+Once a request is approved, the portal adds the title to the right **Maintainerr** collection. Maintainerr handles the deletion schedule. The portal never deletes files directly.
 
-> **Warning:** Approving a request can initiate permanent media deletion after the configured delay. Test only with titles you actually want removed.
+> **Heads up:** Approving a request can lead to permanent deletion after the configured delay. Only test with titles you actually want to remove.
 
 ## How it works
 
 ```text
-Plex account → Plex SSO → Verify access to your Plex server
+Plex account -> Plex SSO -> Verify access to your Plex server
                                  |
                         Browse eligible libraries
                                  |
@@ -33,17 +33,17 @@ Plex account → Plex SSO → Verify access to your Plex server
                     Scheduled downstream deletion
 ```
 
-### Features
+## Features
 
-- **Plex sign-in:** No separate portal account or password. Plex server membership is checked before access is granted.
-- **Owner-controlled requests:** Shared Plex users can submit requests, but cannot approve, reject, or manage portal sessions.
-- **Owner auto-approval:** The verified Plex owner’s individual and bulk requests use the same validation and approval process as manually approved requests.
-- **Media discovery:** Browse Plex libraries, search titles, and select multiple movies or TV shows.
-- **Library-aware routing:** Send approved content to a different Maintainerr collection for each configured Plex library. Supports standard, kids, and anime movie/TV libraries.
-- **Private request history:** Users can see their own requests and statuses on **My requests**, with pagination.
-- **Conflict protection:** SQLite prevents concurrent duplicate active or approved requests for the same Plex media ID.
-- **Fail-safe handoff:** A timeout or uncertain Maintainerr result becomes `review`, never an automatic retry.
-- **Self-hosted deployment:** Python/Flask application with SQLite storage, packaged for Docker and suitable for Unraid.
+- **Sign in with Plex:** No new accounts or passwords. Users must have access to your Plex server.
+- **You stay in control:** Shared users can request deletions, but only the server owner can approve or reject them or manage sessions.
+- **Auto-approve your own requests:** Your requests, including bulk requests, go through the normal checks and are approved automatically.
+- **Browse and search:** Find titles across Plex libraries and request several at once.
+- **Library-specific collections:** Each Plex library can have its own Maintainerr collection, including separate kids and anime libraries.
+- **My requests:** Users can check the status of their own requests without seeing anyone else’s history.
+- **Duplicate protection:** The database prevents multiple active or approved requests for the same title.
+- **Safe error handling:** If Maintainerr times out or returns an unclear result, the request is marked `review` instead of being retried automatically.
+- **Runs on your server:** Built with Flask and SQLite, packaged for Docker, and designed to run on Unraid or other Linux hosts.
 
 ## Request statuses
 
@@ -65,7 +65,7 @@ Plex account → Plex SSO → Verify access to your Plex server
 
 The sample `.env.example` and `compose.yaml` are **templates**. Use your own addresses, credentials, Plex libraries, and Maintainerr collection IDs. Do not publish `.env` or the SQLite database.
 
-## Quick start
+## Installation
 
 1. Clone the repository and create a private environment file:
 
@@ -75,8 +75,8 @@ The sample `.env.example` and `compose.yaml` are **templates**. Use your own add
    cp .env.example .env
    ```
 
-2. Configure `.env` using the documented variables and your own credentials. In particular, set the Plex owner/server settings, Maintainerr URL, the collection mappings, session secret, and deletion-delay policy. **Do not use example secrets or public URLs without reviewing them.**
-3. Create the required Maintainerr collections. Each must target the correct Plex library and media type, have the intended deletion action, and satisfy `MIN_DELETE_DAYS`. Turn off automated rule selection if only explicit, owner-approved submissions should be included.
+2. Edit `.env` with your Plex and Maintainerr settings, collection IDs, session secret, and deletion delay. Replace all example values with your own.
+3. Set up a Maintainerr collection for each Plex library you want to manage. Check that each collection uses the right library, media type, deletion action, and delay. If you only want approved requests added, leave automatic rules disabled.
 4. Build and validate the image:
 
    ```bash
@@ -87,14 +87,14 @@ The sample `.env.example` and `compose.yaml` are **templates**. Use your own add
      local/media-approval-portal:security-hardening /app/test_runtime.py
    ```
 
-5. Deploy with persistent `/data` storage and the private `.env` file. On Unraid, you can use your existing Docker template, mapping the application container port `8080` to a suitable local host port. Avoid forwarding that port directly from WAN. Run behind HTTPS and configure edge protections **before** opening access to other users.
-6. Sign in as the Plex owner; validate library browsing, requester/owner roles, collection mapping, and request history before authorizing real deletions.
+5. Deploy the container with persistent `/data` storage and your private `.env` file. The app listens on port `8080` inside Docker; map it to a local port on your host. Put it behind HTTPS and do not forward the app port directly from the internet.
+6. Sign in as the Plex owner and check the libraries, user permissions, collection mapping, and request history before approving real deletions.
 
 Refer to [SECURITY.md](SECURITY.md) for the public-facing deployment boundary. The example Compose file is not a substitute for reviewing your own Docker and reverse-proxy settings.
 
 ## Maintainerr collection mapping
 
-The portal supports these library-specific environment variables. Collection IDs are **instance-specific**; the numbers shown are illustrative only.
+Set the collection IDs in `.env`. The IDs below are examples; yours may be different.
 
 | Plex library | Environment variable | Example ID |
 | --- | --- | --- |
@@ -105,11 +105,11 @@ The portal supports these library-specific environment variables. Collection IDs
 | Kids TV Shows | `KIDS_SHOW_COLLECTION_ID` | `5` |
 | Anime TV Shows | `ANIME_SHOW_COLLECTION_ID` | `6` |
 
-Before a deletion handoff, the portal validates the item's actual Plex library against Maintainerr's collection `libraryId`, along with its type, action, active status, and configured delay. A mismatch fails closed. A one-day minimum can be explicitly configured with `MIN_DELETE_DAYS=1`; choose a delay appropriate to your installation.
+Before adding a title, the portal checks that the Plex library matches Maintainerr's `libraryId`, and that the collection has the right type, action, status, and deletion delay. If something doesn't match, it stops. To allow a one-day delay, set `MIN_DELETE_DAYS=1`.
 
 ## Security verification
 
-**Operator-reported verification date: November 15, 2026.** The results below describe the tested deployment and image, not a blanket guarantee for every installation or future rebuild.
+**Tested November 15, 2026.** These are the results from the tested Docker image and server setup. Other builds and installations need their own checks.
 
 | Check | Recorded result |
 | --- | --- |
@@ -122,7 +122,7 @@ Before a deletion handoff, the portal validates the item's actual Plex library a
 | Cloudflare Plex login rate-limiting rule | **Active** in operator's dashboard |
 | Direct-origin TCP/443 check from one external scanner | **Filtered** |
 
-**Trivy scope:** Docker image `local/media-approval-portal:security-hardening`, Alpine 3.24.4 and installed Python packages, with the vulnerability DB updated for the November 15, 2026 scan. The runtime regression tests use mocked upstream services for many checks; they do not establish end-to-end deletion correctness.
+**Trivy scanned:** Docker image `local/media-approval-portal:security-hardening`, Alpine 3.24.4 and installed Python packages, with the vulnerability DB updated for the November 15, 2026 scan. Several tests use simulated Plex and Maintainerr responses, so passing them does not confirm that actual files were deleted.
 
 To reproduce the main checks on your own image:
 
@@ -139,9 +139,9 @@ gitleaks git . --redact
 gitleaks dir . --redact
 ```
 
-For the individual test names, results, threat-model limitations, and reproducibility details, see [**Security Testing Report**](SECURITY_TESTING.md).
+For the full list of tests and scan details, see [Security Testing Results](SECURITY_TESTING.md).
 
-**Security limitations:** No independent penetration test has been conducted. The reported external port test only covered one IPv4 vantage point; IPv6 and other ports require separate verification. The in-app anonymous Plex PIN throttle is browser-bound, so a properly configured edge rate limit is required for public access. A clean vulnerability/secret scan does not prove the application has no logic flaws or future vulnerabilities.
+**What these results do not cover:** This project has not had an independent penetration test. The external port test checked IPv4 from one location, not IPv6 or every port. The built-in Plex login limit is tied to a browser session, so public installations also need rate limiting at the proxy or firewall. A clean scan cannot rule out every security bug.
 
 ## Deployment security
 
@@ -154,10 +154,10 @@ For the individual test names, results, threat-model limitations, and reproducib
 
 See [SECURITY.md](SECURITY.md) for deployment safeguards and private vulnerability reporting.
 
-## Project scope
+## A note about deletion
 
-The portal is a **request-and-approval layer**. Maintainerr and connected media management services determine when and how approved items are ultimately removed. `approved` confirms the upstream handoff, **not** that Radarr/Sonarr deleted files, Plex refreshed its library, or a request-management app updated its records. Verify those outcomes independently.
+Media Approval Portal handles requests and approvals. Maintainerr and your media management apps handle the actual deletion. An `approved` request means Maintainerr received it; it does **not** mean the file is already gone or that Plex, Radarr, Sonarr, or Seerr have finished updating.
 
 ## Contributing
 
-Bug reports and improvements are welcome. Avoid publishing API credentials, Plex tokens, private hostnames, real media deletion logs, or exploitable security details in public issues. For suspected vulnerabilities, follow [SECURITY.md](SECURITY.md).
+Bug reports, fixes, and suggestions are welcome. Please do not include API keys, Plex tokens, private addresses, or sensitive logs in issues. For security problems, follow [SECURITY.md](SECURITY.md).
