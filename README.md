@@ -1,5 +1,9 @@
 # Media Approval Portal
 
+
+[![Tests and container security](https://github.com/tbutz12/MediaApprovalPortal/actions/workflows/ci.yml/badge.svg)](https://github.com/tbutz12/MediaApprovalPortal/actions/workflows/ci.yml)
+
+
 **Let people on your Plex server request movies and shows for deletion without giving them access to your media management tools.**
 
 Media Approval Portal lets the people you share your Plex server with request movies and TV shows to be removed. They sign in with Plex, find what they want removed, and send a request. You decide what gets deleted without giving anyone access to your files, Radarr, Sonarr, or Maintainerr. Requests you submit as the server owner are approved automatically, but still go through the same checks.
@@ -81,10 +85,10 @@ The sample `.env.example` and `compose.yaml` are **templates**. Use your own add
 
    ```bash
    docker build --pull --no-cache -f Dockerfile.alpine \
-     -t local/media-approval-portal:security-hardening .
+     -t local/media-approval-portal:dashboard-ui-fixed .
 
    docker run --rm --entrypoint python \
-     local/media-approval-portal:security-hardening /app/test_runtime.py
+     local/media-approval-portal:dashboard-ui-fixed /app/test_runtime.py
    ```
 
 5. Deploy the container with persistent `/data` storage and your private `.env` file. The app listens on port `8080` inside Docker; map it to a local port on your host. Put it behind HTTPS and do not forward the app port directly from the internet.
@@ -113,7 +117,7 @@ Before adding a title, the portal checks that the Plex library matches Maintaine
 
 | Check | Recorded result |
 | --- | --- |
-| Automated security and regression tests | **26 / 26 passed** |
+| Automated security and regression tests | **30 / 30 passed** |
 | Trivy HIGH findings | **0 detected** |
 | Trivy CRITICAL findings | **0 detected** |
 | Gitleaks Git history scan | **0 findings**, 4 commits scanned |
@@ -122,18 +126,18 @@ Before adding a title, the portal checks that the Plex library matches Maintaine
 | Cloudflare Plex login rate-limiting rule | **Active** in operator's dashboard |
 | Direct-origin TCP/443 check from one external scanner | **Filtered** |
 
-**Trivy scanned:** Docker image `local/media-approval-portal:security-hardening`, Alpine 3.24.4 and installed Python packages, with the vulnerability DB updated for the November 15, 2026 scan. Several tests use simulated Plex and Maintainerr responses, so passing them does not confirm that actual files were deleted.
+**Trivy scanned:** Docker image `local/media-approval-portal:dashboard-ui-fixed`, Alpine 3.24.4 and installed Python packages, with the vulnerability DB updated for the November 15, 2026 scan. Several tests use simulated Plex and Maintainerr responses, so passing them does not confirm that actual files were deleted.
 
 To reproduce the main checks on your own image:
 
 ```bash
 docker run --rm --entrypoint python \
-  local/media-approval-portal:security-hardening /app/test_runtime.py
+  local/media-approval-portal:dashboard-ui-fixed /app/test_runtime.py
 
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock:ro \
   aquasec/trivy:latest image --scanners vuln \
   --severity HIGH,CRITICAL --exit-code 1 \
-  local/media-approval-portal:security-hardening
+  local/media-approval-portal:dashboard-ui-fixed
 
 gitleaks git . --redact
 gitleaks dir . --redact
