@@ -1,0 +1,84 @@
+name: Publish versioned Docker image
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Existing Git tag to publish, for example v1.0.0'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Test, scan and publish GHCR
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+      IMAGE: ghcr.io/${{ github.repository_owner }}/mediaapprovalportal
+    steps:
+      - name: Check out exact release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Validate immutable source tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected a stable SemVer tag such as v1.0.0" >&2
+            exit 1
+          fi
+          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse HEAD)" = "$(git rev-list -n 1 "$RELEASE_TAG")"
+          echo "Building $RELEASE_TAG from $(git rev-parse HEAD)"
+
+      - name: Build Docker image
+        run: docker build --pull -f Dockerfile.alpine -t mediaapprovalportal:release .
+
+      - name: Run regression tests
+        run: docker run --rm --entrypoint python mediaapprovalportal:release /app/test_runtime.py
+
+      - name: Scan image with Trivy (HIGH and CRITICAL)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: mediaapprovalportal:release
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          format: table
+          exit-code: '1'
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish the tested image
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="${IMAGE,,}"
+          VERSION="${RELEASE_TAG#v}"
+          docker tag mediaapprovalportal:release "$IMAGE:$VERSION"
+          docker push "$IMAGE:$VERSION"
+          docker tag mediaapprovalportal:release "$IMAGE:latest"
+          docker push "$IMAGE:latest"
+          echo "Published $IMAGE:$VERSION and $IMAGE:latest" >> "$GITHUB_STEP_SUMMARY"
