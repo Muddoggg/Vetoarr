@@ -810,10 +810,14 @@ def index():
 
 
 
-@app.get('/admin/requests')
+@app.get('/requests')
 @require_login
-def all_requests():
-    if session.get('role') != 'admin':
+def requests_page():
+    admin = session['role'] == 'admin'
+    view = request.args.get('view', 'all' if admin else 'mine')
+    if view not in ('all', 'mine'):
+        abort(400)
+    if not admin and view != 'mine':
         abort(403)
     try:
         page_num = int(request.args.get('page', '1'))
@@ -823,35 +827,46 @@ def all_requests():
         abort(400)
     per_page = 25
     with conn() as c:
-        total = c.execute('SELECT COUNT(*) FROM requests').fetchone()[0]
-        rows = c.execute('SELECT id,title,requester,media_type,status,created_at,decided_at,error FROM requests ORDER BY id DESC LIMIT ? OFFSET ?',
-                         (per_page, (page_num-1)*per_page)).fetchall()
-    return page("""<section class="hero"><span class="eyebrow">ADMINISTRATOR</span><h1>All requests</h1><p>Review all submitted titles, approve pending requests, and handle items that need reconciliation. Approved means Maintainerr accepted the request, not that files have been deleted.</p></section>
-    <section class="panel"><div class="section-head"><h2>Request history</h2><span class="tag">{{total}} total</span></div>
-    {% for r in rows %}<div class="line"><div style="min-width:0;flex:1"><div class="request-title">{{r['title']}}</div><div class="request-meta">#{{r['id']}} · {{r['requester']}} · {{r['media_type']|title}} · {{r['created_at']}} UTC<br><span class="tag {{r['status']}}">{{r['status']}}</span></div>{% if r['error'] %}<small>{{r['error']}}</small>{% endif %}</div>
-    {% if r['status']=='pending' %}<form method="post" action="{{url_for('decide',req_id=r['id'])}}"><input type="hidden" name="csrf" value="{{csrf}}"><button class="primary" name="decision" value="approve">Approve</button><button class="danger" name="decision" value="reject">Reject</button></form>{% endif %}
-    {% if r['status']=='review' %}<form method="post" action="{{url_for('reconcile',req_id=r['id'])}}"><input type="hidden" name="csrf" value="{{csrf}}"><button>Reconcile</button></form>{% endif %}
+        if admin and view == 'all':
+            total = c.execute('SELECT COUNT(*) FROM requests').fetchone()[0]
+            rows = c.execute('SELECT id,title,requester,media_type,status,created_at,decided_at,error FROM requests ORDER BY id DESC LIMIT ? OFFSET ?',
+                             (per_page, (page_num-1)*per_page)).fetchall()
+        else:
+            total = c.execute('SELECT COUNT(*) FROM requests WHERE requester=?', (session['user'],)).fetchone()[0]
+            rows = c.execute('SELECT id,title,requester,media_type,status,created_at,decided_at,error FROM requests WHERE requester=? ORDER BY id DESC LIMIT ? OFFSET ?',
+                             (session['user'], per_page, (page_num-1)*per_page)).fetchall()
+    return page("""<section class="hero"><h1>Requests</h1>
+    <p>{% if admin and view=='all' %}Review and manage removal requests.{% else %}Track requests you've submitted. Approval schedules removal; it doesn't confirm deletion.{% endif %}</p></section>
+    {% if admin %}<nav class="request-tabs" aria-label="Request views">
+      <a href="{{url_for('requests_page',view='all')}}" class="{% if view=='all' %}active{% endif %}" {% if view=='all' %}aria-current="page"{% endif %}>All Requests</a>
+      <a href="{{url_for('requests_page',view='mine')}}" class="{% if view=='mine' %}active{% endif %}" {% if view=='mine' %}aria-current="page"{% endif %}>My Requests</a>
+    </nav>{% endif %}
+    <section class="panel"><div class="section-head"><h2>{% if admin and view=='all' %}All requests{% else %}My requests{% endif %}</h2><span class="tag">{{total}} total</span></div>
+    {% for r in rows %}<div class="line"><div style="min-width:0;flex:1"><div class="request-title">{{r['title']}}</div>
+      <div class="request-meta">#{{r['id']}}{% if admin and view=='all' %} · {{r['requester']}}{% endif %} · {{r['media_type']|title}} · {{r['created_at']}} UTC<br>
+      <span class="tag {{r['status']}}">{{r['status']}}</span></div>
+      {% if r['error'] %}<small>{{r['error']}}</small>{% endif %}</div>
+      {% if admin and view=='all' and r['status']=='pending' %}<form method="post" action="{{url_for('decide',req_id=r['id'])}}"><input type="hidden" name="csrf" value="{{csrf}}"><button class="primary" name="decision" value="approve">Approve</button><button class="danger" name="decision" value="reject">Reject</button></form>{% endif %}
+      {% if admin and view=='all' and r['status']=='review' %}<form method="post" action="{{url_for('reconcile',req_id=r['id'])}}"><input type="hidden" name="csrf" value="{{csrf}}"><button>Reconcile</button></form>{% endif %}
     </div>{% else %}<p class="empty">No requests yet.</p>{% endfor %}
-    <nav class="pager">{% if page_num > 1 %}<a href="{{url_for('all_requests',page=page_num-1)}}">← Previous</a>{% endif %}{% if page_num * per_page < total %}<a href="{{url_for('all_requests',page=page_num+1)}}">Next →</a>{% endif %}</nav></section>""", rows=rows, page_num=page_num, per_page=per_page, total=total)
+    <nav class="pager">{% if page_num > 1 %}<a href="{{url_for('requests_page',view=view,page=page_num-1)}}">Previous</a>{% endif %}
+    {% if page_num * per_page < total %}<a href="{{url_for('requests_page',view=view,page=page_num+1)}}">Next</a>{% endif %}</nav></section>""",
+                rows=rows, admin=admin, view=view, total=total, page_num=page_num, per_page=per_page)
+
+
+# Existing bookmarks still work; role enforcement remains server-side.
+@app.get('/admin/requests')
+@require_login
+def all_requests():
+    if session['role'] != 'admin':
+        abort(403)
+    return redirect(url_for('requests_page',view='all',page=request.args.get('page', '1')))
 
 
 @app.get('/my-requests')
 @require_login
 def my_requests():
-    try:
-        page_num = int(request.args.get('page', '1'))
-    except ValueError:
-        abort(400)
-    if not 1 <= page_num <= 10000:
-        abort(400)
-    per_page = 25
-    with conn() as c:
-        total = c.execute('SELECT COUNT(*) FROM requests WHERE requester=?', (session['user'],)).fetchone()[0]
-        rows = c.execute('SELECT id,title,media_type,status,created_at,decided_at,error FROM requests WHERE requester=? ORDER BY id DESC LIMIT ? OFFSET ?', (session['user'], per_page, (page_num-1)*per_page)).fetchall()
-    return page("""<section class="hero"><span class="eyebrow">YOUR REQUEST HISTORY</span><h1>My requests</h1><p>Track your own deletion requests and whether they are pending, approved, rejected, or require manual review. Approval schedules deletion; it does not prove the files were deleted.</p></section>
-    <section class="panel"><div class="section-head"><h2>Submitted titles</h2><span class="tag">{{total}} total</span></div>
-    {% for r in rows %}<div class="line"><div><div class="request-title">{{r['title']}}</div><div class="request-meta">#{{r['id']}} · {{r['media_type']|title}} · Submitted {{r['created_at']}} UTC · <span class="tag {{r['status']}}">{{r['status']}}</span></div>{% if r['error'] %}<small>{{r['error']}}</small>{% endif %}</div></div>{% else %}<p class="empty">No requests submitted yet.</p>{% endfor %}
-    <nav class="pager">{% if page_num > 1 %}<a href="{{url_for('my_requests',page=page_num-1)}}">← Previous</a>{% endif %}{% if page_num * per_page < total %}<a href="{{url_for('my_requests',page=page_num+1)}}">Next →</a>{% endif %}</nav></section>""", rows=rows, page_num=page_num, per_page=per_page, total=total)
+    return redirect(url_for('requests_page',view='mine',page=request.args.get('page', '1')))
 
 
 @app.post('/request/bulk/review')
