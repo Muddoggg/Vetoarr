@@ -1045,7 +1045,7 @@ def submit_bulk():
         items = validated_bulk_items(ids)
     except (requests.RequestException, ValueError, KeyError, TypeError):
         flash('Could not validate all selected Plex items; no requests created')
-        return redirect(url_for('index', submitted=1))
+        return redirect(url_for('index'))
     created = 0
     created_ids = []
     with conn() as c:
