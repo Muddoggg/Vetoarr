@@ -3,6 +3,15 @@
   const form = document.getElementById('confirm-selection-form');
   if (!form) return;
   const key = 'vetoarr:selected:' + form.dataset.selectionUser;
+  const dialog = document.getElementById('review-dialog');
+  if (dialog && typeof dialog.showModal === 'function') {
+    dialog.removeAttribute('open');
+    dialog.showModal();
+    dialog.addEventListener('cancel', event => {
+      event.preventDefault();
+      window.location.assign('/');
+    });
+  }
   const list = document.getElementById('confirm-items');
   const count = document.getElementById('confirm-count');
   const submit = document.getElementById('confirm-submit');
