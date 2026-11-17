@@ -166,12 +166,12 @@ BASE = """<!doctype html><html lang="en"><head><meta name="viewport" content="wi
 /* Keep the selection and recent-request panels visible while browsing long libraries.
    Each panel has its own scroll area, so action buttons stay in reach. */
 @media (min-width:821px) and (min-height:600px){
-  .library-sidebar{position:sticky;top:16px;align-self:start;display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);min-height:0}
+  .library-sidebar{position:sticky;top:16px;align-self:start;display:flex;flex-direction:column;gap:12px;height:calc(100vh - 32px);height:calc(100dvh - 32px);min-height:0}
   .library-sidebar>.panel{margin:0;min-height:0}
-  .library-sidebar .selection-panel{display:flex;flex-direction:column;flex:0 1 auto;max-height:48vh;max-height:48dvh}
+  .library-sidebar .selection-panel{display:flex;flex-direction:column;flex:0 1 auto;max-height:38vh;max-height:38dvh}
   .library-sidebar .selection-panel #selected-items{min-height:0;max-height:none;overflow-y:auto}
   .library-sidebar .selection-panel #selection-review-form{flex-shrink:0}
-  .library-sidebar .request-panel{display:flex;flex-direction:column;flex:1 1 180px;min-height:130px}
+  .library-sidebar .request-panel{display:flex;flex-direction:column;flex:1 1 0;min-height:280px}
   .library-sidebar .request-panel>.request-list{flex:1 1 auto;min-height:0;max-height:none;overflow-y:auto}
 }
 </style></head><body><div class="shell"><header class="topbar"><a class="logo" href="/"><img src="/static/icon.png" alt="" aria-hidden="true">Vetoarr</a>{% if user %}<div class="userbar"><span>{{user}}</span><a href="{{url_for('index')}}">Library</a><a href="{{url_for('requests_page')}}">Requests</a>{% if role=='admin' %}<a href="{{url_for('discord_notifications')}}">Discord</a>{% endif %}<form method="post" action="{{url_for('logout')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button>Sign out</button></form></div>{% endif %}</header>{% for msg in get_flashed_messages() %}<p class="notice">{{msg}}</p>{% endfor %}{{content|safe}}</div></body></html>"""
