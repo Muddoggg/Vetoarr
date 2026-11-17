@@ -563,27 +563,43 @@ def discord_notifications():
     if session['role'] != 'admin':
         abort(403)
     cfg = discord_config()
-    return page("""<section class="hero"><span class="eyebrow">ADMINISTRATOR</span>
-      <h1>Discord Notifications</h1><p>Get notified when users request media removal and when requests are reviewed.</p></section>
+    configured = bool(cfg['webhook_cipher'])
+    return page("""<section class="hero"><h1>Discord</h1><p>Send removal request updates to a Discord channel.</p></section>
       <section class="panel"><h2>Webhook settings</h2>
-      <p class="muted">Webhook URLs are encrypted on disk. Saved URLs are never shown here.</p>
-      <form method="post" action="{{url_for('save_discord')}}">
-      <input type="hidden" name="csrf" value="{{csrf}}">
-      <div class="line"><label for="discord-enabled">Enable Discord notifications</label>
-      <input id="discord-enabled" type="checkbox" name="enabled" {% if cfg['enabled'] %}checked{% endif %}></div>
-      <p><label for="webhook">Discord webhook URL {% if configured %}(configured){% else %}(not configured){% endif %}</label></p>
-      <input id="webhook" type="password" name="webhook" autocomplete="new-password"
-        placeholder="Leave blank to keep existing webhook" style="width:100%;max-width:650px;padding:12px;background:#0e1622;color:white;border:1px solid #36465b;border-radius:10px">
-      <p class="muted tiny">Leave blank to keep the current webhook. Use Remove to clear it.</p>
-      <h3>Notify me about</h3>
-      {% for event,label in events %}<div class="line"><label for="{{event}}">{{label}}</label>
-      <input type="checkbox" id="{{event}}" name="{{event}}" {% if cfg[event] %}checked{% endif %}></div>{% endfor %}
-      <p><button class="primary" type="submit">Save settings</button></p></form>
-      <div class="fields"><form method="post" action="{{url_for('test_discord')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button type="submit" {% if not configured %}disabled{% endif %}>Send test notification</button></form>
-      <form method="post" action="{{url_for('remove_discord')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button type="submit" class="danger" {% if not configured %}disabled{% endif %}>Remove webhook</button></form></div>
-      </section>""", cfg=cfg, configured=bool(cfg['webhook_cipher']),
-                events=[('new_request','New removal requests'),('approved','Approved requests'),
-                        ('rejected','Rejected requests'),('review','Requests needing manual review')])
+      <p class="muted">Create a webhook in your Discord channel settings. Saved URLs are encrypted and never displayed.</p>
+      <form method="post" action="{{url_for('save_discord')}}" data-discord-ajax="save">
+        <input type="hidden" name="csrf" value="{{csrf}}">
+        <p><label for="webhook">Discord webhook URL <span id="discord-configured">{% if configured %}(saved){% else %}(not saved){% endif %}</span></label></p>
+        <input id="webhook" type="password" name="webhook" autocomplete="new-password"
+          placeholder="{% if configured %}Leave blank to keep saved webhook{% else %}Paste Discord webhook URL{% endif %}"
+          style="width:100%;max-width:650px;padding:12px;background:#0e1622;color:white;border:1px solid #36465b;border-radius:10px">
+        <p class="muted tiny">Saving a new webhook enables notifications automatically.</p>
+        <div class="line"><label for="discord-enabled">Enable notifications</label><input id="discord-enabled" type="checkbox" name="enabled" {% if cfg['enabled'] or not configured %}checked{% endif %}></div>
+        <h3>Send notifications for</h3>
+        {% for event,label in events %}<div class="line"><label for="{{event}}">{{label}}</label>
+        <input type="checkbox" id="{{event}}" name="{{event}}" {% if cfg[event] %}checked{% endif %}></div>{% endfor %}
+        <p><button class="primary" type="submit">Save settings</button></p>
+      </form>
+      <div class="fields">
+        <form method="post" action="{{url_for('test_discord')}}" data-discord-ajax="test">
+          <input type="hidden" name="csrf" value="{{csrf}}"><button type="submit">Test webhook</button>
+        </form>
+        <form method="post" action="{{url_for('remove_discord')}}" data-discord-ajax="remove">
+          <input type="hidden" name="csrf" value="{{csrf}}"><button type="submit" class="danger" {% if not configured %}disabled{% endif %}>Remove webhook</button>
+        </form>
+      </div>
+      <p id="discord-feedback" class="discord-feedback" role="status" aria-live="polite"></p>
+      </section><script src="{{url_for('static',filename='discord.js')}}" defer></script>""",
+      cfg=cfg, configured=configured, events=[('new_request','New removal requests'),
+      ('approved','Approved requests'), ('rejected','Rejected requests'),
+      ('review','Requests needing manual review')])
+
+
+def discord_result(message, *, ok=True, status=200):
+    if request.accept_mimetypes.best == 'application/json':
+        return jsonify({'ok': ok, 'message': message}), status
+    flash(message)
+    return redirect(url_for('discord_notifications'))
 
 
 @app.post('/admin/discord/save')
@@ -599,19 +615,18 @@ def save_discord():
         try:
             encrypted = fernet.encrypt(validate_discord_webhook(value).encode())
         except ValueError:
-            flash('Invalid Discord webhook URL. Settings were not saved.')
-            return redirect(url_for('discord_notifications'))
-    enabled = int('enabled' in request.form)
+            return discord_result('Invalid Discord webhook URL. Settings were not saved.', ok=False, status=400)
+    # New or replacement webhooks auto-enable. For a saved webhook, the toggle
+    # controls the enabled state, including explicit opt-out.
+    enabled = int(bool(value) or 'enabled' in request.form)
     if enabled and not encrypted:
-        flash('Add a Discord webhook before enabling notifications.')
-        return redirect(url_for('discord_notifications'))
+        return discord_result('Add a Discord webhook before enabling notifications.', ok=False, status=400)
     flags = [int(event in request.form) for event in _DISCORD_EVENTS]
     with conn() as c:
         c.execute("""UPDATE discord_settings SET webhook_cipher=?, enabled=?,
                      new_request=?,approved=?,rejected=?,review=? WHERE id=1""",
                   (encrypted, enabled, *flags))
-    flash('Discord settings saved.')
-    return redirect(url_for('discord_notifications'))
+    return discord_result('Discord settings saved. Notifications ' + ('enabled.' if enabled else 'disabled.'))
 
 
 @app.post('/admin/discord/remove')
@@ -622,8 +637,7 @@ def remove_discord():
         abort(403)
     with conn() as c:
         c.execute('UPDATE discord_settings SET webhook_cipher=NULL,enabled=0 WHERE id=1')
-    flash('Discord webhook removed and notifications disabled.')
-    return redirect(url_for('discord_notifications'))
+    return discord_result('Webhook removed. Notifications disabled.')
 
 
 @app.post('/admin/discord/test')
@@ -632,27 +646,30 @@ def test_discord():
     csrf_check()
     if session['role'] != 'admin':
         abort(403)
-    cfg = discord_config()
-    if not cfg['webhook_cipher']:
-        flash('Configure a webhook first.')
-        return redirect(url_for('discord_notifications'))
-    # Serialize cooldown claims across workers before any network request.
-    # Count failed attempts too: prevents using the test button to flood Discord.
+    value = request.form.get('webhook', '').strip()
+    if value:
+        try:
+            url = validate_discord_webhook(value)
+        except ValueError:
+            return discord_result('Invalid Discord webhook URL.', ok=False, status=400)
+    else:
+        cfg = discord_config()
+        if not cfg['webhook_cipher']:
+            return discord_result('Paste a Discord webhook URL to test.', ok=False, status=400)
+        try:
+            url = fernet.decrypt(cfg['webhook_cipher']).decode()
+        except (InvalidToken, UnicodeDecodeError):
+            return discord_result('Stored webhook could not be decrypted.', ok=False, status=400)
     now = int(time.time())
     with conn() as c:
         c.execute('BEGIN IMMEDIATE')
         updated = c.execute('UPDATE discord_test_limits SET last_attempt=? WHERE id=1 AND last_attempt <= ?',
             (now, now - DISCORD_TEST_COOLDOWN_SECONDS)).rowcount
     if not updated:
-        flash('Please wait 60 seconds between Discord test notifications.')
-        return redirect(url_for('discord_notifications'))
-    try:
-        url = fernet.decrypt(cfg['webhook_cipher']).decode()
-        ok = discord_send(url, 'Your Vetoarr Discord webhook is working.', title='Test notification')
-        flash('Discord test notification sent.' if ok else 'Discord test failed. Check your webhook and server logs.')
-    except (InvalidToken, UnicodeDecodeError):
-        flash('Stored webhook could not be decrypted.')
-    return redirect(url_for('discord_notifications'))
+        return discord_result('Please wait 60 seconds between Discord tests.', ok=False, status=429)
+    ok = discord_send(url, 'Your Vetoarr Discord webhook is working.', title='Test notification')
+    return discord_result('Test message sent to Discord.' if ok else 'Discord test failed. Check webhook and server logs.',
+                          ok=ok, status=200 if ok else 502)
 
 
 @app.post('/admin/revoke-sessions')
