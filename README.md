@@ -59,13 +59,14 @@ Plex handles account authentication, so users don't need separate credentials.
 
 ## Features
 
-- **Sign in with Plex:** No new accounts or passwords. Users must have access to your Plex server.
+- **Sign in with Plex:** One-click handoff to Plex sign-in; no new accounts or passwords. Users must have access to your Plex server.
 - **You stay in control:** Shared users can request deletions, but only the server owner can approve or reject them or manage sessions.
 - **Auto-approve your own requests:** Your requests, including bulk requests, go through the normal checks and are approved automatically.
 - **Browse and search:** Find titles across Plex libraries and request several at once.
 - **Library-specific collections:** Each Plex library can have its own Maintainerr collection, including separate kids and anime libraries.
-- **My requests:** Users can check the status of their own requests without seeing anyone else’s history.
-- **Duplicate protection:** The database prevents multiple active or approved requests for the same title.
+- **Requests:** Admins can switch between All Requests and My Requests. Shared users can only see their own requests.
+- **Duplicate protection:** The database prevents multiple active or approved requests for the same title, while allowing a new request after verified removal.
+- **Removal status checks:** Admin pages check approved requests in small batches, and admins can select **Refresh statuses** on the Requests page to check on demand. Status changes to `removed` only when Plex no longer lists the title and the corresponding Maintainerr collections no longer contain it.
 - **Safe error handling:** If Maintainerr times out or returns an unclear result, the request is marked `review` instead of being retried automatically.
 - **Runs on your server:** Built with Flask and SQLite, packaged for Docker, and designed to run on Unraid or other Linux hosts.
 
@@ -74,7 +75,7 @@ Plex handles account authentication, so users don't need separate credentials.
 The Plex server owner can configure Discord alerts under **Discord** in the navigation bar.
 Create a webhook in your Discord server's channel settings and paste its URL into the admin-only page.
 The webhook is stored encrypted in the existing SQLite database (using the application's `SECRET_KEY`), and isn't displayed after saving.
-Choose notifications for new shared-user requests, approvals, rejections, and requests requiring manual review. Use **Send test notification** to verify the destination or **Remove webhook** to disable and clear it.
+Choose notifications for new shared-user requests, approvals, rejections, and requests requiring manual review. Saving a new or replacement webhook enables notifications by default; you can turn off notifications for a previously saved webhook. **Send test notification** also works with an unsaved URL, and save, test, and removal actions report their results without reloading the page.
 
 Notifications are best-effort. If Discord is unavailable, request approval and deletion processing still operate normally. The webhook URL is a secret: do not put it in your README, logs, screenshots, or public issue reports. Avoid changing `SECRET_KEY`, since that would make the stored webhook undecipherable.
 
@@ -84,6 +85,7 @@ Notifications are best-effort. If Discord is unavailable, request approval and d
 | --- | --- |
 | `pending` | Waiting for a decision from the server owner |
 | `approved` | Maintainerr collection membership was confirmed; deletion may still be scheduled for later |
+| `removed` | Plex no longer lists the media and Maintainerr no longer shows it in the configured deletion collections; this does not prove which service deleted the file |
 | `rejected` | The owner declined the request; the title may be requested again |
 | `review` | The outcome of a Maintainerr submission is uncertain and requires manual investigation before retrying |
 
@@ -100,7 +102,7 @@ The sample `.env.example` and `compose.yaml` are **templates**. Use your own add
 
 ## Official Docker image
 
-For the first Vetoarr-branded source release, use `ghcr.io/muddoggg/vetoarr:1.0.1` once its GitHub Actions publish workflow has passed and the package has been made public. The earlier `v1.0.0` Git tag and Docker image are preserved as the pre-rename release.
+Use the latest published release from [GitHub Releases](https://github.com/Muddoggg/Vetoarr/releases). For an explicitly versioned deployment, use the matching image tag (for example, `ghcr.io/muddoggg/vetoarr:1.2.0`) after confirming the package was published successfully. Keep your persistent `/data` volume when upgrading.
 
 ## Installation
 
@@ -193,7 +195,7 @@ See [SECURITY.md](SECURITY.md) for deployment safeguards and private vulnerabili
 
 ## A note about deletion
 
-Vetoarr handles requests and approvals. Maintainerr and your media management apps handle the actual deletion. An `approved` request means Maintainerr received it; it does **not** mean the file is already gone or that Plex, Radarr, Sonarr, or Seerr have finished updating.
+Vetoarr handles requests and approvals. Maintainerr and your media management apps handle actual deletion. An `approved` request means Maintainerr accepted it; it does **not** mean the file is gone. Vetoarr can later mark it `removed` when Plex no longer lists it and it is absent from Maintainerr's configured deletion collections. If a service cannot be checked, the request stays approved. Checking removal does not delete or re-submit anything, and cannot prove which app performed the deletion.
 
 
 ## Development Transparency & Maintainer Background
@@ -215,11 +217,11 @@ My professional background includes:
 
 ### Open Source & Accountability
 
-As Vetoarr's maintainer, I'm responsible for reviewing changes, addressing reported bugs and security issues, and maintaining the application's releases and documentation.
+I maintain Vetoarr, review contributions, fix bugs, and keep releases and documentation up to date as the project evolves.
 
-Every release goes through automated regression tests and Trivy container vulnerability scanning. These checks help identify problems before publication, but they do not guarantee the absence of vulnerabilities.
+GitHub Actions runs regression tests and Trivy container scans to help catch issues before release. They're useful checks, though no test suite or scan can catch everything.
 
-Users can review the source code, report bugs, suggest improvements, or submit pull requests through GitHub. Security vulnerabilities should be reported privately rather than through public issues.
+Vetoarr is open source, so feel free to look through the code, report a bug, suggest an improvement, or open a pull request. If you find a security issue, please use the private reporting instructions in [SECURITY.md](SECURITY.md) instead of posting it publicly.
 
 **Repository:** https://github.com/Muddoggg/Vetoarr
 
