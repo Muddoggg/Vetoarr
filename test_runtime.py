@@ -268,6 +268,40 @@ class PortalTests(unittest.TestCase):
         with self.client.session_transaction(base_url=self.url) as session:
             return dict(session)
 
+    def test_library_page_uses_twenty_titles_and_validates_access(self):
+        self.logged_in('222')
+        self.assertEqual(portal.BROWSE_PAGE_SIZE, 20)
+        with patch.object(portal, 'plex_libraries', return_value=[
+                {'id':'1','title':'Movies','type':'movie'}]), \
+             patch.object(portal, 'browse_library', return_value=(
+                [{'id':'12001','type':'movie','title':'First','year':'2023'}], True)):
+            response = self.req('/api/library/1/items?offset=20')
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json['items'][0]['title'], 'First')
+            self.assertEqual(response.json['next_offset'], 40)
+            self.assertTrue(response.json['has_more'])
+            self.assertEqual(self.req('/api/library/999/items').status_code, 404)
+
+    def test_selection_tracker_is_rendered_on_dashboard(self):
+        self.logged_in('222')
+        with patch.object(portal, 'plex_libraries', return_value=[]):
+            response = self.req('/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'selected-items', response.data)
+        self.assertIn(b'browse.js', response.data)
+
+    def test_review_dialog_allows_removing_titles_before_submit(self):
+        self.logged_in('222')
+        media = {'id':'12004','type':'movie','title':'Remove Me','section_id':'1'}
+        with patch.object(portal, 'plex_item', return_value=media), \
+             patch.object(portal, 'collection_for_item', return_value=1):
+            response = self.req('/request/bulk/review', 'POST',
+                                data={'csrf':'csrf-test','plex_ids':['12004']})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'confirm-selection-form', response.data)
+        self.assertIn(b'data-remove-id="12004"', response.data)
+        self.assertIn(b'review.js', response.data)
+
     def test_bulk_rejects_unvalidated_ids(self):
         self.logged_in('222')
         r = self.req('/request/bulk', 'POST', data={'csrf':'csrf-test', 'plex_ids':['../../evil']})
