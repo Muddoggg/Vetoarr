@@ -268,10 +268,62 @@ class PortalTests(unittest.TestCase):
         with self.client.session_transaction(base_url=self.url) as session:
             return dict(session)
 
+    def test_library_page_uses_twenty_titles_and_validates_access(self):
+        self.logged_in('222')
+        self.assertEqual(portal.BROWSE_PAGE_SIZE, 20)
+        with patch.object(portal, 'plex_libraries', return_value=[
+                {'id':'1','title':'Movies','type':'movie'}]), \
+             patch.object(portal, 'browse_library', return_value=(
+                [{'id':'12001','type':'movie','title':'First','year':'2023'}], True)):
+            response = self.req('/api/library/1/items?offset=20')
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json['items'][0]['title'], 'First')
+            self.assertEqual(response.json['next_offset'], 40)
+            self.assertTrue(response.json['has_more'])
+            self.assertEqual(self.req('/api/library/999/items').status_code, 404)
+
+    def test_selection_tracker_is_rendered_on_dashboard(self):
+        self.logged_in('222')
+        with patch.object(portal, 'plex_libraries', return_value=[]):
+            response = self.req('/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'selected-items', response.data)
+        self.assertIn(b'browse.js', response.data)
+
+    def test_review_dialog_allows_removing_titles_before_submit(self):
+        self.logged_in('222')
+        media = {'id':'12004','type':'movie','title':'Remove Me','section_id':'1'}
+        with patch.object(portal, 'plex_item', return_value=media), \
+             patch.object(portal, 'collection_for_item', return_value=1):
+            response = self.req('/request/bulk/review', 'POST',
+                                data={'csrf':'csrf-test','plex_ids':['12004']})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'confirm-selection-form', response.data)
+        self.assertIn(b'data-remove-id="12004"', response.data)
+        self.assertIn(b'review.js', response.data)
+
     def test_bulk_rejects_unvalidated_ids(self):
         self.logged_in('222')
         r = self.req('/request/bulk', 'POST', data={'csrf':'csrf-test', 'plex_ids':['../../evil']})
         self.assertEqual(r.status_code, 400)
+
+    def test_bulk_validation_failure_preserves_browser_selection(self):
+        self.logged_in('222')
+        with patch.object(portal, 'validated_bulk_items', side_effect=ValueError('Plex temporarily unavailable')):
+            response = self.req('/request/bulk', 'POST',
+                                data={'csrf':'csrf-test', 'plex_ids':['432100']})
+        self.assertEqual(response.status_code, 302)
+        self.assertNotIn('submitted=1', response.headers['Location'])
+        with portal.conn() as c:
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM requests').fetchone()[0], 0)
+
+    def test_browser_selection_restore_and_one_time_clear_hooks(self):
+        source = pathlib.Path(portal.__file__).parent.joinpath('static/browse.js').read_text(encoding='utf-8')
+        self.assertIn('loadSelections()', source)
+        self.assertIn("window.addEventListener('pageshow'", source)
+        self.assertIn('event.persisted', source)
+        self.assertIn("url.searchParams.delete('submitted')", source)
+        self.assertIn('window.history.replaceState', source)
 
     def test_bulk_requests_stay_pending(self):
         self.logged_in('222')
@@ -408,11 +460,25 @@ class PortalTests(unittest.TestCase):
         self.logged_in('111')
         items = {'990013': {'id':'990013','title':'Owner Show 1','type':'show','section_id':'5'},
                  '990014': {'id':'990014','title':'Owner Show 2','type':'show','section_id':'5'}}
+        posted = set()
+        lock = threading.Lock()
+
+        def membership(collection_id, media_id):
+            with lock:
+                return media_id in posted
+
+        def maintainerr_post(method, url, **kwargs):
+            self.assertEqual(method, 'POST')
+            media_id = kwargs['json']['mediaId']
+            with lock:
+                posted.add(media_id)
+            return {}
+
         with patch.object(portal,'plex_item',side_effect=lambda item,**kw:items[item]), \
              patch.object(portal,'collection_for_item',return_value=5), \
              patch.object(portal,'check_collection'), \
-             patch.object(portal,'has_membership',side_effect=[False,True,False,True]), \
-             patch.object(portal,'service_json',return_value={}) as sent:
+             patch.object(portal,'has_membership',side_effect=membership), \
+             patch.object(portal,'service_json',side_effect=maintainerr_post) as sent:
             response = self.req('/request/bulk','POST',data={'csrf':'csrf-test','plex_ids':['990013','990014']})
         self.assertEqual(response.status_code,302)
         self.assertEqual(sent.call_count,2)

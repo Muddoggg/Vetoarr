@@ -6,11 +6,13 @@ import re
 import secrets
 import sqlite3
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from urllib.parse import quote, urlsplit, urlencode
 
 import requests
-from flask import Flask, abort, flash, g, jsonify, redirect, render_template_string, request, session, url_for
+from flask import Flask, abort, flash, g, has_request_context, jsonify, redirect, render_template_string, request, session, url_for
 from cryptography.fernet import Fernet, InvalidToken
 import base64
 
@@ -34,7 +36,7 @@ LIBRARY_COLLECTIONS = {
 }
 MIN_DELETE_DAYS = max(1, int(os.getenv('MIN_DELETE_DAYS', '7')))
 MAX_SEARCH_LENGTH = 100
-BROWSE_PAGE_SIZE = 30
+BROWSE_PAGE_SIZE = 20
 MAX_BULK_ITEMS = 20
 MAX_CONTENT_LENGTH = 4096
 PLEX_SSO_CLIENT_ID = os.getenv('PLEX_SSO_CLIENT_ID', 'media-approval-portal-unraid-v6')
@@ -72,6 +74,19 @@ app.config.update(
 http = requests.Session()
 http.trust_env = False
 http.max_redirects = 0
+_thread_http = threading.local()
+
+
+def worker_http():
+    """One requests.Session per worker thread, never shared concurrently."""
+    client = getattr(_thread_http, 'client', None)
+    if client is None:
+        client = requests.Session()
+        client.trust_env = False
+        client.max_redirects = 0
+        _thread_http.client = client
+    return client
+
 
 
 def conn():
@@ -298,7 +313,8 @@ def service_json(method, url, *, token=False, **kwargs):
         headers['X-Plex-Client-Identifier'] = 'media-approval-portal-unraid'
     if token:
         headers['X-Plex-Token'] = PLEX_TOKEN
-    response = http.request(method, url, headers=headers, timeout=(3, 12), allow_redirects=False, **kwargs)
+    client = worker_http() if threading.current_thread() is not threading.main_thread() else http
+    response = client.request(method, url, headers=headers, timeout=(3, 12), allow_redirects=False, **kwargs)
     response.raise_for_status()
     if response.status_code in (301, 302, 303, 307, 308):
         raise ValueError('Service sent unexpected redirect')
@@ -309,12 +325,13 @@ def service_json(method, url, *, token=False, **kwargs):
     return response.json()
 
 
-def plex_get(path, params=None, *, user_scoped=False):
+def plex_get(path, params=None, *, user_scoped=False, user_token=None):
     if user_scoped:
-        user_token = getattr(g, 'plex_server_token', None)
+        user_token = user_token or getattr(g, 'plex_server_token', None)
         if not user_token:
             raise ValueError('Missing authorized server access')
-        response = http.get(PLEX_URL + path, params=params, headers=plex_headers(user_token), timeout=(3, 12), allow_redirects=False)
+        client = worker_http() if threading.current_thread() is not threading.main_thread() else http
+        response = client.get(PLEX_URL + path, params=params, headers=plex_headers(user_token), timeout=(3, 12), allow_redirects=False)
         response.raise_for_status()
         if response.is_redirect:
             raise ValueError('Unexpected Plex redirect')
@@ -326,10 +343,10 @@ def plex_get(path, params=None, *, user_scoped=False):
     return result['MediaContainer']
 
 
-def plex_item(media_id, *, user_scoped=True):
+def plex_item(media_id, *, user_scoped=True, user_token=None):
     if not re.fullmatch(r'[0-9]{1,18}', media_id):
         raise ValueError('Invalid Plex ID')
-    entries = plex_get('/library/metadata/' + quote(media_id, safe=''), user_scoped=user_scoped).get('Metadata', [])
+    entries = plex_get('/library/metadata/' + quote(media_id, safe=''), user_scoped=user_scoped, user_token=user_token).get('Metadata', [])
     if not isinstance(entries, list) or not entries:
         raise ValueError('Plex item unavailable')
     item = entries[0]
@@ -758,7 +775,14 @@ def plex_libraries(*, user_scoped=True):
 
 def collection_for_item(item, *, user_scoped=True):
     """Match an item to an allowed Plex library, never trust submitted section IDs."""
-    matches = [library for library in plex_libraries(user_scoped=user_scoped)
+    # Reuse the authorized library list for repeated items within one request.
+    cache_key = '_user_libraries' if user_scoped else '_owner_libraries'
+    libraries = getattr(g, cache_key, None) if has_request_context() else None
+    if libraries is None:
+        libraries = plex_libraries(user_scoped=user_scoped)
+        if has_request_context():
+            setattr(g, cache_key, libraries)
+    matches = [library for library in libraries
                if library['id'] == str(item['section_id']) and library['type'] == item['type']]
     if len(matches) != 1:
         raise ValueError('Media does not belong to a configured Plex library')
@@ -797,6 +821,37 @@ def browse_library(section_id, offset):
     else:
         has_more = len(items) == BROWSE_PAGE_SIZE
     return items, has_more
+
+
+
+@app.get('/api/library/<section_id>/items')
+@require_login
+def library_items(section_id):
+    """Server-validated, read-only cursor pages for the selected mapped library."""
+    try:
+        offset = int(request.args.get('offset', '0'))
+        libraries = plex_libraries()
+        chosen = next((x for x in libraries if x['id'] == section_id), None)
+        if chosen is None:
+            abort(404)
+        items, more = browse_library(section_id, offset)
+        return jsonify({'items': [x for x in items if x['type'] == chosen['type']],
+                        'has_more': more, 'next_offset': offset + BROWSE_PAGE_SIZE})
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        app.logger.warning('Library page fetch failed')
+        return jsonify({'error': 'Unable to load more titles'}), 502
+
+
+def validated_bulk_items(ids):
+    """Validate ownership-scoped items concurrently; collection mapping once."""
+    user_token = g.plex_server_token
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        items = list(pool.map(lambda media_id: plex_item(media_id, user_token=user_token), ids))
+    # Existing mapping checks reuse the request-scoped authorized library list.
+    for item in items:
+        collection_for_item(item)
+    return items
+
 
 
 def search_plex(term):
@@ -855,23 +910,23 @@ def index():
       <form method="get" class="fields"><input name="q" value="{{term}}" placeholder="Search movies or TV shows..." required maxlength="100"><button class="primary">Search</button></form>
       {% if error %}<p class="notice">{{error}}</p>{% endif %}
       {% if term and not found and not error %}<p class="empty">No matching titles. Try the library browser below.</p>{% endif %}
-      {% if found %}<form method="post" action="{{url_for('review_bulk')}}"><input type="hidden" name="csrf" value="{{csrf}}">
-      {% for m in found %}<label class="line"><input type="checkbox" name="plex_ids" value="{{m.id}}"><span><strong>{{m.title}}</strong><small>{{m.year}} · {{m.type|title}}</small></span></label>{% endfor %}
-      <div class="batchbar"><small>Choose up to 20 titles</small><button class="primary">Request selected titles</button></div></form>{% endif %}</section>
+      {% if found %}<div>
+      {% for m in found %}<label class="line"><input type="checkbox" data-media-id="{{m.id}}" data-media-title="{{m.title}}" data-media-type="{{m.type}}"><span><strong>{{m.title}}</strong><small>{{m.year}} · {{m.type|title}}</small></span></label>{% endfor %}
+      </div>{% endif %}</section>
       <section class="panel"><h2>Browse your library</h2><p class="muted">Choose a library, select titles, and {% if role=='admin' %}schedule their removal{% else %}send them to the server owner for approval{% endif %}.</p>
       {% for kind,label in [('movie','Movies'),('show','TV Shows')] %}<details {% if selected_type==kind %}open{% endif %}><summary>{{label}}</summary>
       <div>{% for library in libraries if library.type==kind %}<a class="library-link" href="{{url_for('index',library=library.id)}}">{{library.title}}</a>{% else %}<p class="empty">No matching library found.</p>{% endfor %}</div>
-      {% if selected_type==kind and selected_section %}<form method="post" action="{{url_for('review_bulk')}}"><input type="hidden" name="csrf" value="{{csrf}}">
-      {% for m in listed %}<label class="line"><input type="checkbox" name="plex_ids" value="{{m.id}}"><span><strong>{{m.title}}</strong><small>{{m.year}} · {{m.type|title}}</small></span></label>{% else %}<p class="empty">No items on this page.</p>{% endfor %}
-      {% if listed %}<div class="batchbar"><small>Max 20 items per batch</small><button class="primary">Submit deletion requests</button></div>{% endif %}</form>
-      <nav class="pager">{% if offset>0 %}<a href="{{url_for('index',library=selected_section,offset=[0,offset-page_size]|max)}}">← Previous</a>{% endif %}{% if has_more %}<a href="{{url_for('index',library=selected_section,offset=offset+page_size)}}">Next →</a>{% endif %}</nav>{% endif %}</details>{% endfor %}</section>
+      {% if selected_type==kind and selected_section %}<form id="browse-items" data-library="{{selected_section}}" data-next-offset="{{offset+page_size}}" data-has-more="{{'true' if has_more else 'false'}}">
+      {% for m in listed %}<label class="line"><input type="checkbox" data-media-id="{{m.id}}" data-media-title="{{m.title}}" data-media-type="{{m.type}}"><span><strong>{{m.title}}</strong><small>{{m.year}} · {{m.type|title}}</small></span></label>{% else %}<p class="empty">No items on this page.</p>{% endfor %}
+      </form>
+      <div id="load-sentinel" aria-hidden="true"></div><button id="load-more" type="button" {% if not has_more %}hidden{% endif %}>Load more titles</button>{% endif %}</details>{% endfor %}</section>
       {% if role=='admin' %}<section class="panel"><h3>Security</h3><p class="muted">Revoke all portal sessions to require fresh Plex sign-in.</p><form method="post" action="{{url_for('revoke_sessions')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button class="danger">Revoke all sessions</button></form></section>{% endif %}
-    </main><aside><section class="panel request-panel"><div class="section-head"><h2>{% if role=='admin' %}Recent requests{% else %}Your recent requests{% endif %}</h2><a href="{% if role=='admin' %}{{url_for('requests_page',view='all')}}{% else %}{{url_for('requests_page')}}{% endif %}">{% if role=='admin' %}All requests{% else %}Full history{% endif %}</a></div><div class="request-list">
+    </main><aside><section class="panel" data-selection-user="{{selection_user}}"><h3>Selected titles (<span id="selected-count">0</span>/20)</h3><div id="selected-items" class="request-list"></div><p id="selection-status" class="muted tiny" aria-live="polite"></p><form id="selection-review-form" method="post" action="{{url_for('review_bulk')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button id="review-selections" class="primary" disabled>Review selected titles</button></form></section><section class="panel request-panel"><div class="section-head"><h2>{% if role=='admin' %}Recent requests{% else %}Your recent requests{% endif %}</h2><a href="{% if role=='admin' %}{{url_for('requests_page',view='all')}}{% else %}{{url_for('requests_page')}}{% endif %}">{% if role=='admin' %}All requests{% else %}Full history{% endif %}</a></div><div class="request-list">
     {% for r in rows %}<div class="line"><div style="min-width:0;flex:1"><div class="request-title">{{r['title']}}</div><div class="request-meta">#{{r['id']}} · {{r['requester']}} · {{r['created_at']}} UTC<br><span class="tag {{r['status']}}">{{r['status']}}</span></div>{% if r['error'] %}<small>{{r['error']}}</small>{% endif %}</div>
     {% if role=='admin' and r['status']=='pending' %}<form method="post" action="{{url_for('decide',req_id=r['id'])}}"><input type="hidden" name="csrf" value="{{csrf}}"><button class="primary" name="decision" value="approve">Approve</button><button class="danger" name="decision" value="reject">Reject</button></form>{% endif %}
     {% if role=='admin' and r['status']=='review' %}<form method="post" action="{{url_for('reconcile',req_id=r['id'])}}"><input type="hidden" name="csrf" value="{{csrf}}"><button>Reconcile</button></form>{% endif %}
     </div>{% else %}<p class="empty">No deletion requests yet.</p>{% endfor %}</div></section>
-    </aside></div>""", term=term, found=found, rows=rows, role=session['role'], libraries=libraries,
+    </aside></div><script src="{{url_for('static',filename='browse.js')}}" defer></script>""", term=term, found=found, rows=rows, role=session['role'], libraries=libraries, selection_user=session['user'],
                 selected_section=selected_section, selected_type=next((x['type'] for x in libraries if x['id']==selected_section), None),
                 listed=listed, has_more=has_more, offset=offset, page_size=BROWSE_PAGE_SIZE, error=error)
 
@@ -960,16 +1015,19 @@ def review_bulk():
     if any(not re.fullmatch(r'[0-9]{1,18}', item) for item in ids):
         abort(400)
     try:
-        items = [plex_item(item) for item in ids]
-        for item in items:
-            collection_for_item(item)
+        items = validated_bulk_items(ids)
     except (requests.RequestException, ValueError, KeyError, TypeError):
         flash('Unable to verify the selected Plex items.')
         return redirect(url_for('index'))
-    return page("""<section class="hero"><span class="eyebrow">REVIEW YOUR REQUESTS</span><h1>Ready to submit?</h1><p>These titles will be submitted. Shared users require owner approval. If you are the server owner, submitting immediately starts the Maintainerr deletion schedule.</p></section>
-        <section class="panel"><form method="post" action="{{url_for('submit_bulk')}}"><input type="hidden" name="csrf" value="{{csrf}}">
-        {% for m in items %}<div class="line"><span><strong>{{m.title}}</strong><small>{{m.type|title}}</small></span><input type="hidden" name="plex_ids" value="{{m.id}}"></div>{% endfor %}
-        <div class="batchbar"><a href="{{url_for('index')}}">Cancel</a><button class="primary big">Submit {{items|length}} deletion request(s)</button></div></form></section>""", items=items)
+    return page("""<section class="hero"><h1>Review your selection</h1></section>
+        <dialog open id="review-dialog" aria-labelledby="review-heading" style="max-width:640px;width:calc(100% - 24px);margin:auto;background:#131c2a;color:#edf1f8;border:1px solid #425776;border-radius:18px;padding:24px">
+        <h2 id="review-heading">Confirm removal requests</h2><p class="muted">Remove anything you no longer want to submit. Only remaining titles will be sent{% if role=='admin' %} and scheduled through Maintainerr{% endif %}.</p>
+        <form id="confirm-selection-form" method="post" action="{{url_for('submit_bulk')}}" data-selection-user="{{selection_user}}">
+        <input type="hidden" name="csrf" value="{{csrf}}">
+        <div id="confirm-items">{% for m in items %}<div class="line" data-confirm-item="{{m.id}}"><span><strong>{{m.title}}</strong><small>{{m.type|title}}</small></span><input type="hidden" name="plex_ids" value="{{m.id}}"><button type="button" data-remove-id="{{m.id}}" aria-label="Remove {{m.title}}">Remove</button></div>{% endfor %}</div>
+        <div class="batchbar"><a href="{{url_for('index')}}">Back to selection</a><button id="confirm-submit" class="primary big">Submit <span id="confirm-count">{{items|length}}</span> request(s)</button></div>
+        </form></dialog><script src="{{url_for('static',filename='review.js')}}" defer></script>""",
+        items=items, role=session['role'], selection_user=session['user'])
 
 
 @app.post('/request/bulk')
@@ -984,9 +1042,7 @@ def submit_bulk():
     try:
         # Validate every item before creating any requests. This performs GETs
         # against Plex, never POSTs to Plex or Maintainerr.
-        items = [plex_item(item) for item in ids]
-        for item in items:
-            collection_for_item(item)
+        items = validated_bulk_items(ids)
     except (requests.RequestException, ValueError, KeyError, TypeError):
         flash('Could not validate all selected Plex items; no requests created')
         return redirect(url_for('index'))
@@ -1013,11 +1069,15 @@ def submit_bulk():
             created_rows = c.execute('SELECT * FROM requests WHERE id IN (' + ','.join('?' for _ in created_ids) + ')', created_ids).fetchall()
         discord_notify('new_request', created_rows)
     if session['role'] == 'admin':
-        outcomes = [process_approval(req_id, session['user']) for req_id in created_ids]
+        # Bounded concurrent approvals; each ID is claimed once in SQLite.
+        # Workers use isolated outbound HTTP sessions, and ambiguous POSTs remain review.
+        actor = session['user']
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            outcomes = list(pool.map(lambda req_id: process_approval(req_id, actor), created_ids))
         flash(f'{created} request(s) recorded; {outcomes.count("approved")} approved, {outcomes.count("pending")} pending, {outcomes.count("review")} need review. Verify Maintainerr before retrying any review item.')
     else:
         flash(f'{created} removal request(s) submitted for administrator approval; nothing deleted')
-    return redirect(url_for('index'))
+    return redirect(url_for('index', submitted=1))
 
 
 @app.post('/request')
