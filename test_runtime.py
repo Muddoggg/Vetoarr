@@ -339,13 +339,16 @@ class PortalTests(unittest.TestCase):
         self.assertEqual(self.req('/requests?view=all').status_code, 403)
 
     def test_one_click_login_redirects_directly_to_plex(self):
-        self.req('/login')
+        login = self.req('/login')
+        self.assertIn(b'Sign in with Plex', login.data)
+        self.assertIn(b'/static/login.js', login.data)
+        self.assertEqual(self.req('/auth/plex/start').status_code, 405)
         with patch.object(portal, 'plex_cloud', return_value={'id': 123456, 'code': 'sufficiently-long-code'}):
-            response = self.req('/auth/plex/start')
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue(response.headers['Location'].startswith('https://app.plex.tv/auth#?'))
-        self.assertIn('forwardUrl=', response.headers['Location'])
-        self.assertIn(b'Sign in with Plex', self.req('/login').data)
+            response = self.req('/auth/plex/start', 'POST',
+                                data={'csrf': self.csrf()}, headers={'Accept': 'application/json'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json['url'].startswith('https://app.plex.tv/auth#?'))
+        self.assertIn('forwardUrl=', response.json['url'])
 
     def test_anonymous_history_requires_login(self):
         response = self.req('/my-requests')
