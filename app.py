@@ -10,7 +10,7 @@ from functools import wraps
 from urllib.parse import quote, urlsplit, urlencode
 
 import requests
-from flask import Flask, abort, flash, g, redirect, render_template_string, request, session, url_for
+from flask import Flask, abort, flash, g, jsonify, redirect, render_template_string, request, session, url_for
 from cryptography.fernet import Fernet, InvalidToken
 import base64
 
@@ -144,8 +144,8 @@ def quarantine_interrupted_approvals():
 
 
 BASE = """<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>Vetoarr</title><link rel="icon" type="image/png" href="/static/icon.png"><style>
-:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;color:#edf1f8;background:#090d15}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 65% -12%,#1b3154 0,transparent 48%),#090d15}a{color:#92c5ff;text-decoration:none}a:hover{text-decoration:underline}.shell{max-width:1120px;margin:0 auto;padding:26px 26px 90px}.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:25px;border-bottom:1px solid #283242}.logo{display:flex;align-items:center;gap:10px}.logo img{width:28px;height:28px;display:block}.logo{font-weight:800;font-size:19px;letter-spacing:-.6px}.logo b{color:#6aafff}.userbar{display:flex;align-items:center;gap:14px;color:#a4b2c8;font-size:13px}.userbar form{display:inline}.hero{padding:42px 0 20px}.eyebrow,.auth-badge{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8abfff;font-weight:800}.hero h1,.auth h1{font-size:clamp(32px,5vw,52px);line-height:1.1;letter-spacing:-1.8px;margin:14px 0}.hero p,.auth p{color:#9cacc1;max-width:640px;line-height:1.65}.layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(270px,1fr);gap:20px}.panel{background:#131c2a;border:1px solid #2a3748;border-radius:18px;padding:23px;margin:18px 0;box-shadow:0 10px 32px #0002}.panel h2,.panel h3{margin:0 0 16px;font-size:19px;letter-spacing:-.4px}.muted,small{color:#9baabd}.tiny{font-size:12px}.notice{padding:13px 18px;background:#19334e;border:1px solid #355473;border-radius:12px;margin:16px 0}.fields{display:flex;gap:10px}.fields input{flex:1;min-width:0}input[type=text],input[name=q]{padding:13px 15px;background:#0e1622;border:1px solid #36465b;border-radius:11px;color:#f0f4fc;font:inherit;min-width:0}button,.pill{padding:11px 15px;background:#25344a;border:1px solid #3c516d;color:#f1f5ff;border-radius:10px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}button:hover{filter:brightness(1.17)}button.primary{background:#427ee7;border-color:#5597f9}button.danger{background:#4f2531;border-color:#a64a60;color:#ffc4ce}.big{padding:15px 22px;font-size:16px}.line{display:flex;gap:12px;align-items:center;padding:13px 2px;border-bottom:1px solid #293547}.line:last-child{border:0}.line label{flex:1;cursor:pointer}.line small{display:block;margin-top:4px}.line input[type=checkbox]{accent-color:#75adff;width:18px;height:18px}.line form{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}.line button{padding:8px 11px}.tag{display:inline-block;background:#273c59;color:#add1ff;border:1px solid #35547b;border-radius:8px;padding:4px 9px;font-size:11px;margin:0 3px 4px 0}.pending{background:#55451e;color:#f9da92}.approved{background:#1c4637;color:#a3ecd1}.rejected{background:#4d2830;color:#ffd1db}.review{background:#523627;color:#ffbe94}details{border:1px solid #2f4156;border-radius:12px;padding:14px;margin:10px 0;background:#111a28}summary{cursor:pointer;font-weight:750;font-size:17px;list-style-position:inside}summary::marker{color:#7aaaff}.library-link{display:inline-block;padding:9px 13px;border-radius:10px;margin:9px 6px 6px 0;background:#243851}.pager{display:flex;gap:15px;padding-top:15px}.auth{max-width:560px;margin:11vh auto;border:1px solid #31445c;border-radius:22px;padding:48px;background:#111c2b}.auth h1 span{color:#8cbcff}form{margin:0}.section-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.request-title{font-size:14px;font-weight:750}.request-panel{overflow:hidden}.request-list{max-height:540px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:5px}.request-panel .section-head{position:sticky;top:0;background:#131c2a;z-index:1;padding-bottom:12px;flex-wrap:wrap}.request-panel .section-head h2{margin:0}.request-meta{font-size:12px;color:#a5b3c8;line-height:1.6;margin-top:3px}.batchbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:15px;flex-wrap:wrap}.empty{padding:14px;color:#8c9fb8}@media(max-width:820px){.layout{grid-template-columns:1fr}.shell{padding:18px 15px 50px}.panel{padding:17px}.userbar{gap:6px;flex-wrap:wrap;justify-content:flex-end}.request-list{max-height:390px}.hero{padding:25px 0 10px}.fields{flex-direction:column}.auth{padding:28px;margin:8vh auto}}
-</style></head><body><div class="shell"><header class="topbar"><a class="logo" href="/"><img src="/static/icon.png" alt="" aria-hidden="true">Vetoarr</a>{% if user %}<div class="userbar"><span>{{user}}</span><a href="{{url_for('index')}}">Library</a><a href="{{url_for('my_requests')}}">My requests</a>{% if role=='admin' %}<a href="{{url_for('all_requests')}}">All requests</a><a href="{{url_for('discord_notifications')}}">Discord</a>{% endif %}<form method="post" action="{{url_for('logout')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button>Sign out</button></form></div>{% endif %}</header>{% for msg in get_flashed_messages() %}<p class="notice">{{msg}}</p>{% endfor %}{{content|safe}}</div></body></html>"""
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;color:#edf1f8;background:#090d15}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 65% -12%,#1b3154 0,transparent 48%),#090d15}a{color:#92c5ff;text-decoration:none}a:hover{text-decoration:underline}.shell{max-width:1120px;margin:0 auto;padding:26px 26px 90px}.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:25px;border-bottom:1px solid #283242}.logo{display:flex;align-items:center;gap:10px}.logo img{width:28px;height:28px;display:block}.logo{font-weight:800;font-size:19px;letter-spacing:-.6px}.logo b{color:#6aafff}.userbar{display:flex;align-items:center;gap:14px;color:#a4b2c8;font-size:13px}.userbar form{display:inline}.hero{padding:42px 0 20px}.eyebrow,.auth-badge{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8abfff;font-weight:800}.hero h1,.auth h1{font-size:clamp(32px,5vw,52px);line-height:1.1;letter-spacing:-1.8px;margin:14px 0}.hero p,.auth p{color:#9cacc1;max-width:640px;line-height:1.65}.layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(270px,1fr);gap:20px}.panel{background:#131c2a;border:1px solid #2a3748;border-radius:18px;padding:23px;margin:18px 0;box-shadow:0 10px 32px #0002}.panel h2,.panel h3{margin:0 0 16px;font-size:19px;letter-spacing:-.4px}.muted,small{color:#9baabd}.tiny{font-size:12px}.notice{padding:13px 18px;background:#19334e;border:1px solid #355473;border-radius:12px;margin:16px 0}.fields{display:flex;gap:10px}.fields input{flex:1;min-width:0}input[type=text],input[name=q]{padding:13px 15px;background:#0e1622;border:1px solid #36465b;border-radius:11px;color:#f0f4fc;font:inherit;min-width:0}button,.pill{padding:11px 15px;background:#25344a;border:1px solid #3c516d;color:#f1f5ff;border-radius:10px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}button:hover{filter:brightness(1.17)}.request-tabs{display:flex;gap:8px;margin:16px 0}.request-tabs a{padding:10px 16px;border-radius:9px;border:1px solid #34445c;color:#bac9de}.request-tabs a.active{background:#2b4973;border-color:#5e92d2;color:#fff}.discord-feedback{min-height:1.4em;color:#a3ecd1}.discord-feedback.error{color:#ffbe94}button.primary{background:#427ee7;border-color:#5597f9}button.danger{background:#4f2531;border-color:#a64a60;color:#ffc4ce}.big{padding:15px 22px;font-size:16px}.line{display:flex;gap:12px;align-items:center;padding:13px 2px;border-bottom:1px solid #293547}.line:last-child{border:0}.line label{flex:1;cursor:pointer}.line small{display:block;margin-top:4px}.line input[type=checkbox]{accent-color:#75adff;width:18px;height:18px}.line form{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}.line button{padding:8px 11px}.tag{display:inline-block;background:#273c59;color:#add1ff;border:1px solid #35547b;border-radius:8px;padding:4px 9px;font-size:11px;margin:0 3px 4px 0}.pending{background:#55451e;color:#f9da92}.approved{background:#1c4637;color:#a3ecd1}.rejected{background:#4d2830;color:#ffd1db}.review{background:#523627;color:#ffbe94}details{border:1px solid #2f4156;border-radius:12px;padding:14px;margin:10px 0;background:#111a28}summary{cursor:pointer;font-weight:750;font-size:17px;list-style-position:inside}summary::marker{color:#7aaaff}.library-link{display:inline-block;padding:9px 13px;border-radius:10px;margin:9px 6px 6px 0;background:#243851}.pager{display:flex;gap:15px;padding-top:15px}.auth{max-width:560px;margin:11vh auto;border:1px solid #31445c;border-radius:22px;padding:48px;background:#111c2b}.auth h1 span{color:#8cbcff}form{margin:0}.section-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.request-title{font-size:14px;font-weight:750}.request-panel{overflow:hidden}.request-list{max-height:540px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:5px}.request-panel .section-head{position:sticky;top:0;background:#131c2a;z-index:1;padding-bottom:12px;flex-wrap:wrap}.request-panel .section-head h2{margin:0}.request-meta{font-size:12px;color:#a5b3c8;line-height:1.6;margin-top:3px}.batchbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:15px;flex-wrap:wrap}.empty{padding:14px;color:#8c9fb8}@media(max-width:820px){.layout{grid-template-columns:1fr}.shell{padding:18px 15px 50px}.panel{padding:17px}.userbar{gap:6px;flex-wrap:wrap;justify-content:flex-end}.request-list{max-height:390px}.hero{padding:25px 0 10px}.fields{flex-direction:column}.auth{padding:28px;margin:8vh auto}}
+</style></head><body><div class="shell"><header class="topbar"><a class="logo" href="/"><img src="/static/icon.png" alt="" aria-hidden="true">Vetoarr</a>{% if user %}<div class="userbar"><span>{{user}}</span><a href="{{url_for('index')}}">Library</a><a href="{{url_for('requests_page')}}">Requests</a>{% if role=='admin' %}<a href="{{url_for('discord_notifications')}}">Discord</a>{% endif %}<form method="post" action="{{url_for('logout')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button>Sign out</button></form></div>{% endif %}</header>{% for msg in get_flashed_messages() %}<p class="notice">{{msg}}</p>{% endfor %}{{content|safe}}</div></body></html>"""
 
 
 def page(html, **ctx):
@@ -285,7 +285,7 @@ def security_headers(resp):
     resp.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     resp.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
     resp.headers['Cache-Control'] = 'no-store'
-    resp.headers['Content-Security-Policy'] = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+    resp.headers['Content-Security-Policy'] = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
     return resp
 
 
@@ -373,7 +373,7 @@ def has_membership(collection_id, media_id):
 def login():
     if session.get('plex_uid'):
         return redirect(url_for('index'))
-    return page("""<section class="auth"><div class="auth-badge">PLEX ACCESS</div><h1>One library.<br><span>Cleaner together.</span></h1><p class="muted">Sign in with the Plex account that has access to this server. Anyone can request; only the server owner can approve.</p><form method="post" action="{{url_for('start_plex')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button class="primary big">Sign in with Plex <span>↗</span></button></form><p class="muted tiny">Protected by Plex sign-in and server-specific permissions</p></section>""")
+    return page("""<section class="auth"><h1>Vetoarr</h1><p>Request a movie or show removal from your Plex library. The server owner reviews requests before anything is scheduled for deletion.</p><form method="post" action="{{url_for('start_plex')}}" id="plex-login-form"><input type="hidden" name="csrf" value="{{csrf}}"><button class="primary big" type="submit">Sign in with Plex</button></form><p class="muted tiny">Use a Plex account with access to this server.</p><p id="plex-login-feedback" class="muted tiny" role="status" aria-live="polite"></p></section><script src="{{url_for('static',filename='login.js')}}" defer></script>""")
 
 
 @app.post('/auth/plex/start')
@@ -410,6 +410,8 @@ def start_plex():
     # Instead render a local confirmation with a normal user-activated link.
     # This preserves form-action 'self' without weakening the CSP.
     plex_auth_url = 'https://app.plex.tv/auth#?' + args
+    if request.accept_mimetypes.best == 'application/json':
+        return jsonify({'url': plex_auth_url})
     return page("""<section class="auth"><div class="auth-badge">PLEX ACCESS</div>
       <h1>Continue to <span>Plex</span></h1>
       <p class="muted">Your secure Plex sign-in request is ready. Continue to Plex to authorize access.</p>
@@ -560,27 +562,43 @@ def discord_notifications():
     if session['role'] != 'admin':
         abort(403)
     cfg = discord_config()
-    return page("""<section class="hero"><span class="eyebrow">ADMINISTRATOR</span>
-      <h1>Discord Notifications</h1><p>Get notified when users request media removal and when requests are reviewed.</p></section>
+    configured = bool(cfg['webhook_cipher'])
+    return page("""<section class="hero"><h1>Discord</h1><p>Send removal request updates to a Discord channel.</p></section>
       <section class="panel"><h2>Webhook settings</h2>
-      <p class="muted">Webhook URLs are encrypted on disk. Saved URLs are never shown here.</p>
-      <form method="post" action="{{url_for('save_discord')}}">
-      <input type="hidden" name="csrf" value="{{csrf}}">
-      <div class="line"><label for="discord-enabled">Enable Discord notifications</label>
-      <input id="discord-enabled" type="checkbox" name="enabled" {% if cfg['enabled'] %}checked{% endif %}></div>
-      <p><label for="webhook">Discord webhook URL {% if configured %}(configured){% else %}(not configured){% endif %}</label></p>
-      <input id="webhook" type="password" name="webhook" autocomplete="new-password"
-        placeholder="Leave blank to keep existing webhook" style="width:100%;max-width:650px;padding:12px;background:#0e1622;color:white;border:1px solid #36465b;border-radius:10px">
-      <p class="muted tiny">Leave blank to keep the current webhook. Use Remove to clear it.</p>
-      <h3>Notify me about</h3>
-      {% for event,label in events %}<div class="line"><label for="{{event}}">{{label}}</label>
-      <input type="checkbox" id="{{event}}" name="{{event}}" {% if cfg[event] %}checked{% endif %}></div>{% endfor %}
-      <p><button class="primary" type="submit">Save settings</button></p></form>
-      <div class="fields"><form method="post" action="{{url_for('test_discord')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button type="submit" {% if not configured %}disabled{% endif %}>Send test notification</button></form>
-      <form method="post" action="{{url_for('remove_discord')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button type="submit" class="danger" {% if not configured %}disabled{% endif %}>Remove webhook</button></form></div>
-      </section>""", cfg=cfg, configured=bool(cfg['webhook_cipher']),
-                events=[('new_request','New removal requests'),('approved','Approved requests'),
-                        ('rejected','Rejected requests'),('review','Requests needing manual review')])
+      <p class="muted">Create a webhook in your Discord channel settings. Saved URLs are encrypted and never displayed.</p>
+      <form method="post" action="{{url_for('save_discord')}}" data-discord-ajax="save">
+        <input type="hidden" name="csrf" value="{{csrf}}">
+        <p><label for="webhook">Discord webhook URL <span id="discord-configured">{% if configured %}(saved){% else %}(not saved){% endif %}</span></label></p>
+        <input id="webhook" type="password" name="webhook" autocomplete="new-password"
+          placeholder="{% if configured %}Leave blank to keep saved webhook{% else %}Paste Discord webhook URL{% endif %}"
+          style="width:100%;max-width:650px;padding:12px;background:#0e1622;color:white;border:1px solid #36465b;border-radius:10px">
+        <p class="muted tiny">Saving a new webhook enables notifications automatically.</p>
+        <div class="line"><label for="discord-enabled">Enable notifications</label><input id="discord-enabled" type="checkbox" name="enabled" {% if cfg['enabled'] or not configured %}checked{% endif %}></div>
+        <h3>Send notifications for</h3>
+        {% for event,label in events %}<div class="line"><label for="{{event}}">{{label}}</label>
+        <input type="checkbox" id="{{event}}" name="{{event}}" {% if cfg[event] %}checked{% endif %}></div>{% endfor %}
+        <p><button class="primary" type="submit">Save settings</button></p>
+      </form>
+      <div class="fields">
+        <form method="post" action="{{url_for('test_discord')}}" data-discord-ajax="test">
+          <input type="hidden" name="csrf" value="{{csrf}}"><button type="submit">Test webhook</button>
+        </form>
+        <form method="post" action="{{url_for('remove_discord')}}" data-discord-ajax="remove">
+          <input type="hidden" name="csrf" value="{{csrf}}"><button type="submit" class="danger" {% if not configured %}disabled{% endif %}>Remove webhook</button>
+        </form>
+      </div>
+      <p id="discord-feedback" class="discord-feedback" role="status" aria-live="polite"></p>
+      </section><script src="{{url_for('static',filename='discord.js')}}" defer></script>""",
+      cfg=cfg, configured=configured, events=[('new_request','New removal requests'),
+      ('approved','Approved requests'), ('rejected','Rejected requests'),
+      ('review','Requests needing manual review')])
+
+
+def discord_result(message, *, ok=True, status=200):
+    if request.accept_mimetypes.best == 'application/json':
+        return jsonify({'ok': ok, 'message': message}), status
+    flash(message)
+    return redirect(url_for('discord_notifications'))
 
 
 @app.post('/admin/discord/save')
@@ -596,19 +614,18 @@ def save_discord():
         try:
             encrypted = fernet.encrypt(validate_discord_webhook(value).encode())
         except ValueError:
-            flash('Invalid Discord webhook URL. Settings were not saved.')
-            return redirect(url_for('discord_notifications'))
-    enabled = int('enabled' in request.form)
+            return discord_result('Invalid Discord webhook URL. Settings were not saved.', ok=False, status=400)
+    # New or replacement webhooks auto-enable. For a saved webhook, the toggle
+    # controls the enabled state, including explicit opt-out.
+    enabled = int(bool(value) or 'enabled' in request.form)
     if enabled and not encrypted:
-        flash('Add a Discord webhook before enabling notifications.')
-        return redirect(url_for('discord_notifications'))
+        return discord_result('Add a Discord webhook before enabling notifications.', ok=False, status=400)
     flags = [int(event in request.form) for event in _DISCORD_EVENTS]
     with conn() as c:
         c.execute("""UPDATE discord_settings SET webhook_cipher=?, enabled=?,
                      new_request=?,approved=?,rejected=?,review=? WHERE id=1""",
                   (encrypted, enabled, *flags))
-    flash('Discord settings saved.')
-    return redirect(url_for('discord_notifications'))
+    return discord_result('Discord settings saved. Notifications ' + ('enabled.' if enabled else 'disabled.'))
 
 
 @app.post('/admin/discord/remove')
@@ -619,8 +636,7 @@ def remove_discord():
         abort(403)
     with conn() as c:
         c.execute('UPDATE discord_settings SET webhook_cipher=NULL,enabled=0 WHERE id=1')
-    flash('Discord webhook removed and notifications disabled.')
-    return redirect(url_for('discord_notifications'))
+    return discord_result('Webhook removed. Notifications disabled.')
 
 
 @app.post('/admin/discord/test')
@@ -629,27 +645,30 @@ def test_discord():
     csrf_check()
     if session['role'] != 'admin':
         abort(403)
-    cfg = discord_config()
-    if not cfg['webhook_cipher']:
-        flash('Configure a webhook first.')
-        return redirect(url_for('discord_notifications'))
-    # Serialize cooldown claims across workers before any network request.
-    # Count failed attempts too: prevents using the test button to flood Discord.
+    value = request.form.get('webhook', '').strip()
+    if value:
+        try:
+            url = validate_discord_webhook(value)
+        except ValueError:
+            return discord_result('Invalid Discord webhook URL.', ok=False, status=400)
+    else:
+        cfg = discord_config()
+        if not cfg['webhook_cipher']:
+            return discord_result('Paste a Discord webhook URL to test.', ok=False, status=400)
+        try:
+            url = fernet.decrypt(cfg['webhook_cipher']).decode()
+        except (InvalidToken, UnicodeDecodeError):
+            return discord_result('Stored webhook could not be decrypted.', ok=False, status=400)
     now = int(time.time())
     with conn() as c:
         c.execute('BEGIN IMMEDIATE')
         updated = c.execute('UPDATE discord_test_limits SET last_attempt=? WHERE id=1 AND last_attempt <= ?',
             (now, now - DISCORD_TEST_COOLDOWN_SECONDS)).rowcount
     if not updated:
-        flash('Please wait 60 seconds between Discord test notifications.')
-        return redirect(url_for('discord_notifications'))
-    try:
-        url = fernet.decrypt(cfg['webhook_cipher']).decode()
-        ok = discord_send(url, 'Your Vetoarr Discord webhook is working.', title='Test notification')
-        flash('Discord test notification sent.' if ok else 'Discord test failed. Check your webhook and server logs.')
-    except (InvalidToken, UnicodeDecodeError):
-        flash('Stored webhook could not be decrypted.')
-    return redirect(url_for('discord_notifications'))
+        return discord_result('Please wait 60 seconds between Discord tests.', ok=False, status=429)
+    ok = discord_send(url, 'Your Vetoarr Discord webhook is working.', title='Test notification')
+    return discord_result('Test message sent to Discord.' if ok else 'Discord test failed. Check webhook and server logs.',
+                          ok=ok, status=200 if ok else 502)
 
 
 @app.post('/admin/revoke-sessions')
@@ -796,7 +815,7 @@ def index():
       {% if listed %}<div class="batchbar"><small>Max 20 items per batch</small><button class="primary">Submit deletion requests</button></div>{% endif %}</form>
       <nav class="pager">{% if offset>0 %}<a href="{{url_for('index',library=selected_section,offset=[0,offset-page_size]|max)}}">← Previous</a>{% endif %}{% if has_more %}<a href="{{url_for('index',library=selected_section,offset=offset+page_size)}}">Next →</a>{% endif %}</nav>{% endif %}</details>{% endfor %}</section>
       {% if role=='admin' %}<section class="panel"><h3>Security</h3><p class="muted">Revoke all portal sessions to require fresh Plex sign-in.</p><form method="post" action="{{url_for('revoke_sessions')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button class="danger">Revoke all sessions</button></form></section>{% endif %}
-    </main><aside><section class="panel request-panel"><div class="section-head"><h2>{% if role=='admin' %}Recent requests{% else %}Your recent requests{% endif %}</h2><a href="{% if role=='admin' %}{{url_for('all_requests')}}{% else %}{{url_for('my_requests')}}{% endif %}">{% if role=='admin' %}All requests{% else %}Full history{% endif %}</a></div><div class="request-list">
+    </main><aside><section class="panel request-panel"><div class="section-head"><h2>{% if role=='admin' %}Recent requests{% else %}Your recent requests{% endif %}</h2><a href="{% if role=='admin' %}{{url_for('requests_page',view='all')}}{% else %}{{url_for('requests_page')}}{% endif %}">{% if role=='admin' %}All requests{% else %}Full history{% endif %}</a></div><div class="request-list">
     {% for r in rows %}<div class="line"><div style="min-width:0;flex:1"><div class="request-title">{{r['title']}}</div><div class="request-meta">#{{r['id']}} · {{r['requester']}} · {{r['created_at']}} UTC<br><span class="tag {{r['status']}}">{{r['status']}}</span></div>{% if r['error'] %}<small>{{r['error']}}</small>{% endif %}</div>
     {% if role=='admin' and r['status']=='pending' %}<form method="post" action="{{url_for('decide',req_id=r['id'])}}"><input type="hidden" name="csrf" value="{{csrf}}"><button class="primary" name="decision" value="approve">Approve</button><button class="danger" name="decision" value="reject">Reject</button></form>{% endif %}
     {% if role=='admin' and r['status']=='review' %}<form method="post" action="{{url_for('reconcile',req_id=r['id'])}}"><input type="hidden" name="csrf" value="{{csrf}}"><button>Reconcile</button></form>{% endif %}
@@ -807,10 +826,14 @@ def index():
 
 
 
-@app.get('/admin/requests')
+@app.get('/requests')
 @require_login
-def all_requests():
-    if session.get('role') != 'admin':
+def requests_page():
+    admin = session['role'] == 'admin'
+    view = request.args.get('view', 'all' if admin else 'mine')
+    if view not in ('all', 'mine'):
+        abort(400)
+    if not admin and view != 'mine':
         abort(403)
     try:
         page_num = int(request.args.get('page', '1'))
@@ -820,35 +843,46 @@ def all_requests():
         abort(400)
     per_page = 25
     with conn() as c:
-        total = c.execute('SELECT COUNT(*) FROM requests').fetchone()[0]
-        rows = c.execute('SELECT id,title,requester,media_type,status,created_at,decided_at,error FROM requests ORDER BY id DESC LIMIT ? OFFSET ?',
-                         (per_page, (page_num-1)*per_page)).fetchall()
-    return page("""<section class="hero"><span class="eyebrow">ADMINISTRATOR</span><h1>All requests</h1><p>Review all submitted titles, approve pending requests, and handle items that need reconciliation. Approved means Maintainerr accepted the request, not that files have been deleted.</p></section>
-    <section class="panel"><div class="section-head"><h2>Request history</h2><span class="tag">{{total}} total</span></div>
-    {% for r in rows %}<div class="line"><div style="min-width:0;flex:1"><div class="request-title">{{r['title']}}</div><div class="request-meta">#{{r['id']}} · {{r['requester']}} · {{r['media_type']|title}} · {{r['created_at']}} UTC<br><span class="tag {{r['status']}}">{{r['status']}}</span></div>{% if r['error'] %}<small>{{r['error']}}</small>{% endif %}</div>
-    {% if r['status']=='pending' %}<form method="post" action="{{url_for('decide',req_id=r['id'])}}"><input type="hidden" name="csrf" value="{{csrf}}"><button class="primary" name="decision" value="approve">Approve</button><button class="danger" name="decision" value="reject">Reject</button></form>{% endif %}
-    {% if r['status']=='review' %}<form method="post" action="{{url_for('reconcile',req_id=r['id'])}}"><input type="hidden" name="csrf" value="{{csrf}}"><button>Reconcile</button></form>{% endif %}
+        if admin and view == 'all':
+            total = c.execute('SELECT COUNT(*) FROM requests').fetchone()[0]
+            rows = c.execute('SELECT id,title,requester,media_type,status,created_at,decided_at,error FROM requests ORDER BY id DESC LIMIT ? OFFSET ?',
+                             (per_page, (page_num-1)*per_page)).fetchall()
+        else:
+            total = c.execute('SELECT COUNT(*) FROM requests WHERE requester=?', (session['user'],)).fetchone()[0]
+            rows = c.execute('SELECT id,title,requester,media_type,status,created_at,decided_at,error FROM requests WHERE requester=? ORDER BY id DESC LIMIT ? OFFSET ?',
+                             (session['user'], per_page, (page_num-1)*per_page)).fetchall()
+    return page("""<section class="hero"><h1>Requests</h1>
+    <p>{% if admin and view=='all' %}Review and manage removal requests.{% else %}Track requests you've submitted. Approval schedules removal; it doesn't confirm deletion.{% endif %}</p></section>
+    {% if admin %}<nav class="request-tabs" aria-label="Request views">
+      <a href="{{url_for('requests_page',view='all')}}" class="{% if view=='all' %}active{% endif %}" {% if view=='all' %}aria-current="page"{% endif %}>All Requests</a>
+      <a href="{{url_for('requests_page',view='mine')}}" class="{% if view=='mine' %}active{% endif %}" {% if view=='mine' %}aria-current="page"{% endif %}>My Requests</a>
+    </nav>{% endif %}
+    <section class="panel"><div class="section-head"><h2>{% if admin and view=='all' %}All requests{% else %}My requests{% endif %}</h2><span class="tag">{{total}} total</span></div>
+    {% for r in rows %}<div class="line"><div style="min-width:0;flex:1"><div class="request-title">{{r['title']}}</div>
+      <div class="request-meta">#{{r['id']}}{% if admin and view=='all' %} · {{r['requester']}}{% endif %} · {{r['media_type']|title}} · {{r['created_at']}} UTC<br>
+      <span class="tag {{r['status']}}">{{r['status']}}</span></div>
+      {% if r['error'] %}<small>{{r['error']}}</small>{% endif %}</div>
+      {% if admin and view=='all' and r['status']=='pending' %}<form method="post" action="{{url_for('decide',req_id=r['id'])}}"><input type="hidden" name="csrf" value="{{csrf}}"><button class="primary" name="decision" value="approve">Approve</button><button class="danger" name="decision" value="reject">Reject</button></form>{% endif %}
+      {% if admin and view=='all' and r['status']=='review' %}<form method="post" action="{{url_for('reconcile',req_id=r['id'])}}"><input type="hidden" name="csrf" value="{{csrf}}"><button>Reconcile</button></form>{% endif %}
     </div>{% else %}<p class="empty">No requests yet.</p>{% endfor %}
-    <nav class="pager">{% if page_num > 1 %}<a href="{{url_for('all_requests',page=page_num-1)}}">← Previous</a>{% endif %}{% if page_num * per_page < total %}<a href="{{url_for('all_requests',page=page_num+1)}}">Next →</a>{% endif %}</nav></section>""", rows=rows, page_num=page_num, per_page=per_page, total=total)
+    <nav class="pager">{% if page_num > 1 %}<a href="{{url_for('requests_page',view=view,page=page_num-1)}}">Previous</a>{% endif %}
+    {% if page_num * per_page < total %}<a href="{{url_for('requests_page',view=view,page=page_num+1)}}">Next</a>{% endif %}</nav></section>""",
+                rows=rows, admin=admin, view=view, total=total, page_num=page_num, per_page=per_page)
+
+
+# Existing bookmarks still work; role enforcement remains server-side.
+@app.get('/admin/requests')
+@require_login
+def all_requests():
+    if session['role'] != 'admin':
+        abort(403)
+    return redirect(url_for('requests_page',view='all',page=request.args.get('page', '1')))
 
 
 @app.get('/my-requests')
 @require_login
 def my_requests():
-    try:
-        page_num = int(request.args.get('page', '1'))
-    except ValueError:
-        abort(400)
-    if not 1 <= page_num <= 10000:
-        abort(400)
-    per_page = 25
-    with conn() as c:
-        total = c.execute('SELECT COUNT(*) FROM requests WHERE requester=?', (session['user'],)).fetchone()[0]
-        rows = c.execute('SELECT id,title,media_type,status,created_at,decided_at,error FROM requests WHERE requester=? ORDER BY id DESC LIMIT ? OFFSET ?', (session['user'], per_page, (page_num-1)*per_page)).fetchall()
-    return page("""<section class="hero"><span class="eyebrow">YOUR REQUEST HISTORY</span><h1>My requests</h1><p>Track your own deletion requests and whether they are pending, approved, rejected, or require manual review. Approval schedules deletion; it does not prove the files were deleted.</p></section>
-    <section class="panel"><div class="section-head"><h2>Submitted titles</h2><span class="tag">{{total}} total</span></div>
-    {% for r in rows %}<div class="line"><div><div class="request-title">{{r['title']}}</div><div class="request-meta">#{{r['id']}} · {{r['media_type']|title}} · Submitted {{r['created_at']}} UTC · <span class="tag {{r['status']}}">{{r['status']}}</span></div>{% if r['error'] %}<small>{{r['error']}}</small>{% endif %}</div></div>{% else %}<p class="empty">No requests submitted yet.</p>{% endfor %}
-    <nav class="pager">{% if page_num > 1 %}<a href="{{url_for('my_requests',page=page_num-1)}}">← Previous</a>{% endif %}{% if page_num * per_page < total %}<a href="{{url_for('my_requests',page=page_num+1)}}">Next →</a>{% endif %}</nav></section>""", rows=rows, page_num=page_num, per_page=per_page, total=total)
+    return redirect(url_for('requests_page',view='mine',page=request.args.get('page', '1')))
 
 
 @app.post('/request/bulk/review')

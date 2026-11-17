@@ -39,7 +39,8 @@ class PortalTests(unittest.TestCase):
         self.mock_user.start(); self.addCleanup(self.mock_user.stop)
 
     def req(self, path, method='GET', **kwargs):
-        return self.client.open(path, method=method, base_url=self.url, headers=self.headers, **kwargs)
+        headers = {**self.headers, **kwargs.pop('headers', {})}
+        return self.client.open(path, method=method, base_url=self.url, headers=headers, **kwargs)
 
     def csrf(self):
         with self.client.session_transaction(base_url=self.url) as session:
@@ -167,14 +168,14 @@ class PortalTests(unittest.TestCase):
             c.execute("INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)",
                       ('plex:222','908901','show','Shared User Request'))
         self.logged_in('111')
-        page = self.req('/admin/requests')
+        page = self.req('/requests?view=all')
         self.assertEqual(page.status_code, 200)
         self.assertIn(b'Shared User Request', page.data)
         self.assertIn(b'Approve', page.data)
         with patch.object(portal, 'plex_libraries', return_value=[]):
             dashboard = self.req('/')
         self.assertEqual(dashboard.status_code, 200)
-        self.assertIn(b'/admin/requests', dashboard.data)
+        self.assertIn(b'/requests', dashboard.data)
         self.assertIn(b'PLEX SERVER ADMINISTRATION', dashboard.data)
 
     def test_requester_cannot_read_all_requests(self):
@@ -183,6 +184,7 @@ class PortalTests(unittest.TestCase):
                       ('plex:333','908902','movie','Private Request'))
         self.logged_in('222')
         self.assertEqual(self.req('/admin/requests').status_code, 403)
+        self.assertEqual(self.req('/requests?view=all').status_code, 403)
         with patch.object(portal, 'plex_libraries', return_value=[]):
             dashboard = self.req('/')
         self.assertEqual(dashboard.status_code, 200)
@@ -196,14 +198,14 @@ class PortalTests(unittest.TestCase):
                 c.execute('INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)',
                           ('plex:222',str(909000+i),'movie',f'History item {i}'))
         self.logged_in('111')
-        first = self.req('/admin/requests')
-        second = self.req('/admin/requests?page=2')
+        first = self.req('/requests?view=all')
+        second = self.req('/requests?view=all&page=2')
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
         self.assertIn(b'Next', first.data)
         self.assertNotIn(b'History item 0', first.data)
         self.assertIn(b'History item 0', second.data)
-        self.assertEqual(self.req('/admin/requests?page=invalid').status_code, 400)
+        self.assertEqual(self.req('/requests?view=all&page=invalid').status_code, 400)
 
     def test_owner_can_view_and_revoke(self):
         self.logged_in('111')
@@ -317,10 +319,36 @@ class PortalTests(unittest.TestCase):
             c.execute("INSERT INTO requests (requester,plex_id,media_type,title) VALUES ('plex:222','991111','movie','Mine Visible')")
             c.execute("INSERT INTO requests (requester,plex_id,media_type,title) VALUES ('plex:333','991112','movie','Other Hidden')")
         self.logged_in('222')
-        response = self.req('/my-requests')
+        response = self.req('/requests')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Mine Visible', response.data)
         self.assertNotIn(b'Other Hidden', response.data)
+
+    def test_requests_tabs_only_visible_to_admin(self):
+        self.logged_in('111')
+        admin = self.req('/requests')
+        self.assertEqual(admin.status_code, 200)
+        self.assertIn(b'All Requests', admin.data)
+        self.assertIn(b'My Requests', admin.data)
+        self.assertIn(b'view=mine', admin.data)
+        self.logged_in('222')
+        regular = self.req('/requests')
+        self.assertEqual(regular.status_code, 200)
+        self.assertNotIn(b'view=all', regular.data)
+        self.assertNotIn(b'class="request-tabs"', regular.data)
+        self.assertEqual(self.req('/requests?view=all').status_code, 403)
+
+    def test_one_click_login_redirects_directly_to_plex(self):
+        login = self.req('/login')
+        self.assertIn(b'Sign in with Plex', login.data)
+        self.assertIn(b'/static/login.js', login.data)
+        self.assertEqual(self.req('/auth/plex/start').status_code, 405)
+        with patch.object(portal, 'plex_cloud', return_value={'id': 123456, 'code': 'sufficiently-long-code'}):
+            response = self.req('/auth/plex/start', 'POST',
+                                data={'csrf': self.csrf()}, headers={'Accept': 'application/json'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json['url'].startswith('https://app.plex.tv/auth#?'))
+        self.assertIn('forwardUrl=', response.json['url'])
 
     def test_anonymous_history_requires_login(self):
         response = self.req('/my-requests')
@@ -391,6 +419,55 @@ class DiscordTests(unittest.TestCase):
         self.req('/admin/discord/remove',method='POST',data={'csrf':'csrf-test'})
         self.assertIsNone(portal.discord_config()['webhook_cipher'])
         self.assertEqual(portal.discord_config()['enabled'],0)
+
+    def test_first_webhook_save_auto_enables_and_explicit_disable_persists(self):
+        self.logged_in('111')
+        hook='https://discord.com/api/webhooks/123456789012345678/'+'a'*60
+        self.req('/admin/discord/save',method='POST',data={'csrf':'csrf-test','webhook':hook})
+        self.assertEqual(portal.discord_config()['enabled'], 1)
+        self.req('/admin/discord/save',method='POST',data={'csrf':'csrf-test'})
+        self.assertEqual(portal.discord_config()['enabled'], 0)
+        self.req('/admin/discord/save',method='POST',data={'csrf':'csrf-test','new_request':'on'})
+        self.assertEqual(portal.discord_config()['enabled'], 0)
+        new_hook='https://discord.com/api/webhooks/123456789012345678/'+'b'*60
+        self.req('/admin/discord/save',method='POST',data={'csrf':'csrf-test','webhook':new_hook})
+        self.assertEqual(portal.discord_config()['enabled'], 1)
+        self.req('/admin/discord/remove',method='POST',data={'csrf':'csrf-test'})
+        self.assertEqual(portal.discord_config()['enabled'], 0)
+
+    def test_unsaved_webhook_can_be_tested_without_saving(self):
+        self.logged_in('111')
+        hook='https://discord.com/api/webhooks/123456789012345678/'+'a'*60
+        with patch.object(portal, 'discord_send', return_value=True) as sent:
+            response=self.req('/admin/discord/test',method='POST',data={'csrf':'csrf-test','webhook':hook},
+                              headers={'Accept':'application/json'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json['ok'])
+        self.assertEqual(sent.call_args.args[0], hook)
+        self.assertIsNone(portal.discord_config()['webhook_cipher'])
+
+    def test_discord_ajax_errors_are_json_and_cooldown_enforced(self):
+        self.logged_in('111')
+        hook='https://discord.com/api/webhooks/123456789012345678/'+'a'*60
+        headers={'Accept':'application/json'}
+        failed=self.req('/admin/discord/test',method='POST',data={'csrf':'csrf-test','webhook':'https://invalid.test/anything'},
+                        headers=headers)
+        self.assertEqual(failed.status_code,400)
+        self.assertFalse(failed.json['ok'])
+        with patch.object(portal,'discord_send',return_value=True) as sent:
+            ok=self.req('/admin/discord/test',method='POST',data={'csrf':'csrf-test','webhook':hook},headers=headers)
+            cooldown=self.req('/admin/discord/test',method='POST',data={'csrf':'csrf-test','webhook':hook},headers=headers)
+        self.assertEqual(ok.status_code,200)
+        self.assertEqual(cooldown.status_code,429)
+        sent.assert_called_once()
+        self.assertFalse(cooldown.json['ok'])
+
+    def test_discord_script_served_with_strict_csp(self):
+        self.logged_in('111')
+        response=self.req('/admin/discord')
+        self.assertIn(b'/static/discord.js', response.data)
+        self.assertIn("script-src 'self'", response.headers['Content-Security-Policy'])
+        self.assertNotIn("'unsafe-inline'", response.headers['Content-Security-Policy'].split("script-src ")[1].split(";")[0])
 
     def test_discord_failure_cannot_interrupt_requests(self):
         with patch.object(portal, 'discord_send', return_value=False):
