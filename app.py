@@ -165,7 +165,7 @@ BASE = """<!doctype html><html lang="en"><head><meta name="viewport" content="wi
 
 /* Keep the selection and recent-request panels visible while browsing long libraries.
    Each panel has its own scroll area, so action buttons stay in reach. */
-@media (min-width:821px){
+@media (min-width:821px) and (min-height:600px){
   .library-sidebar{position:sticky;top:16px;align-self:start;display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);min-height:0}
   .library-sidebar>.panel{margin:0;min-height:0}
   .library-sidebar .selection-panel{display:flex;flex-direction:column;flex:0 1 auto;max-height:48vh;max-height:48dvh}
