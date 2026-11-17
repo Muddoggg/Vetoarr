@@ -289,6 +289,11 @@ class PortalTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'selected-items', response.data)
         self.assertIn(b'browse.js', response.data)
+        self.assertIn(b'class="library-sidebar"', response.data)
+        self.assertIn(b'class="panel selection-panel"', response.data)
+        self.assertIn(b'@media (min-width:821px) and (min-height:600px)', response.data)
+        self.assertIn(b'position:sticky;top:16px', response.data)
+        self.assertIn(b'max-height:48dvh', response.data)
 
     def test_review_dialog_allows_removing_titles_before_submit(self):
         self.logged_in('222')
