@@ -291,6 +291,7 @@ class PortalTests(unittest.TestCase):
         self.assertIn(b'browse.js', response.data)
         self.assertIn(b'class="library-sidebar"', response.data)
         self.assertIn(b'class="panel selection-panel"', response.data)
+        self.assertIn(b'@media (min-width:821px) and (min-height:600px)', response.data)
         self.assertIn(b'position:sticky;top:16px', response.data)
         self.assertIn(b'max-height:48dvh', response.data)
 
