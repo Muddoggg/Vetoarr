@@ -12,14 +12,19 @@
   const csrf = save.querySelector('[name="csrf"]').value;
   let configured = marker.textContent.includes('saved') && !marker.textContent.includes('not saved');
 
-  async function submit(form, extra) {
+  async function submit(form, extra, lockFields = false) {
     const button = form.querySelector('button[type="submit"]');
     if (button) button.disabled = true;
     feedback.textContent = 'Working...';
     feedback.classList.remove('error');
+    let previousDisabled;
     try {
       const data = new FormData(form);
       if (extra) Object.entries(extra).forEach(([key, value]) => data.set(key, value));
+      if (lockFields) {
+        previousDisabled = [webhook.disabled, enabled.disabled, removeButton.disabled];
+        webhook.disabled = enabled.disabled = removeButton.disabled = true;
+      }
       const response = await fetch(form.action, {
         method: 'POST', credentials: 'same-origin', redirect: 'error',
         headers: { Accept: 'application/json' }, body: data
@@ -36,13 +41,16 @@
       feedback.classList.add('error');
       return false;
     } finally {
+      if (previousDisabled) {
+        [webhook.disabled, enabled.disabled, removeButton.disabled] = previousDisabled;
+      }
       if (button) button.disabled = false;
     }
   }
   save.addEventListener('submit', async (event) => {
     event.preventDefault();
     const newWebhook = webhook.value.trim();
-    if (await submit(save)) {
+    if (await submit(save, undefined, true)) {
       if (newWebhook) {
         configured = true;
         enabled.checked = true;
