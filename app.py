@@ -903,15 +903,15 @@ def index():
       <form method="get" class="fields"><input name="q" value="{{term}}" placeholder="Search movies or TV shows..." required maxlength="100"><button class="primary">Search</button></form>
       {% if error %}<p class="notice">{{error}}</p>{% endif %}
       {% if term and not found and not error %}<p class="empty">No matching titles. Try the library browser below.</p>{% endif %}
-      {% if found %}<form method="post" action="{{url_for('review_bulk')}}"><input type="hidden" name="csrf" value="{{csrf}}">
+      {% if found %}<div>
       {% for m in found %}<label class="line"><input type="checkbox" data-media-id="{{m.id}}" data-media-title="{{m.title}}" data-media-type="{{m.type}}"><span><strong>{{m.title}}</strong><small>{{m.year}} · {{m.type|title}}</small></span></label>{% endfor %}
-      </form>{% endif %}</section>
+      </div>{% endif %}</section>
       <section class="panel"><h2>Browse your library</h2><p class="muted">Choose a library, select titles, and {% if role=='admin' %}schedule their removal{% else %}send them to the server owner for approval{% endif %}.</p>
       {% for kind,label in [('movie','Movies'),('show','TV Shows')] %}<details {% if selected_type==kind %}open{% endif %}><summary>{{label}}</summary>
       <div>{% for library in libraries if library.type==kind %}<a class="library-link" href="{{url_for('index',library=library.id)}}">{{library.title}}</a>{% else %}<p class="empty">No matching library found.</p>{% endfor %}</div>
       {% if selected_type==kind and selected_section %}<form id="browse-items" data-library="{{selected_section}}" data-next-offset="{{offset+page_size}}" data-has-more="{{'true' if has_more else 'false'}}">
       {% for m in listed %}<label class="line"><input type="checkbox" data-media-id="{{m.id}}" data-media-title="{{m.title}}" data-media-type="{{m.type}}"><span><strong>{{m.title}}</strong><small>{{m.year}} · {{m.type|title}}</small></span></label>{% else %}<p class="empty">No items on this page.</p>{% endfor %}
-      {% if listed %}{% endif %}</form>
+      </form>
       <div id="load-sentinel" aria-hidden="true"></div><button id="load-more" type="button" {% if not has_more %}hidden{% endif %}>Load more titles</button>{% endif %}</details>{% endfor %}</section>
       {% if role=='admin' %}<section class="panel"><h3>Security</h3><p class="muted">Revoke all portal sessions to require fresh Plex sign-in.</p><form method="post" action="{{url_for('revoke_sessions')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button class="danger">Revoke all sessions</button></form></section>{% endif %}
     </main><aside><section class="panel" data-selection-user="{{selection_user}}"><h3>Selected titles (<span id="selected-count">0</span>/20)</h3><div id="selected-items" class="request-list"></div><p id="selection-status" class="muted tiny" aria-live="polite"></p><form id="selection-review-form" method="post" action="{{url_for('review_bulk')}}"><input type="hidden" name="csrf" value="{{csrf}}"><button id="review-selections" class="primary" disabled>Review selected titles</button></form></section><section class="panel request-panel"><div class="section-head"><h2>{% if role=='admin' %}Recent requests{% else %}Your recent requests{% endif %}</h2><a href="{% if role=='admin' %}{{url_for('requests_page',view='all')}}{% else %}{{url_for('requests_page')}}{% endif %}">{% if role=='admin' %}All requests{% else %}Full history{% endif %}</a></div><div class="request-list">
@@ -1013,7 +1013,7 @@ def review_bulk():
         flash('Unable to verify the selected Plex items.')
         return redirect(url_for('index'))
     return page("""<section class="hero"><h1>Review your selection</h1></section>
-        <dialog open id="review-dialog" aria-labelledby="review-heading" style="position:relative;max-width:640px;width:100%;margin:15px auto;background:#131c2a;color:#edf1f8;border:1px solid #425776;border-radius:18px;padding:24px">
+        <dialog open id="review-dialog" aria-labelledby="review-heading" style="max-width:640px;width:calc(100% - 24px);margin:auto;background:#131c2a;color:#edf1f8;border:1px solid #425776;border-radius:18px;padding:24px">
         <h2 id="review-heading">Confirm removal requests</h2><p class="muted">Remove anything you no longer want to submit. Only remaining titles will be sent{% if role=='admin' %} and scheduled through Maintainerr{% endif %}.</p>
         <form id="confirm-selection-form" method="post" action="{{url_for('submit_bulk')}}" data-selection-user="{{selection_user}}">
         <input type="hidden" name="csrf" value="{{csrf}}">
@@ -1070,7 +1070,7 @@ def submit_bulk():
         flash(f'{created} request(s) recorded; {outcomes.count("approved")} approved, {outcomes.count("pending")} pending, {outcomes.count("review")} need review. Verify Maintainerr before retrying any review item.')
     else:
         flash(f'{created} removal request(s) submitted for administrator approval; nothing deleted')
-    return redirect(url_for('index'))
+    return redirect(url_for('index', submitted=1))
 
 
 @app.post('/request')
