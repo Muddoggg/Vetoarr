@@ -17,6 +17,10 @@ jobs:
     name: Release latest merged PR from main
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    outputs:
+      release_tag: ${{ steps.release_output.outputs.release_tag }}
+      pr_number: ${{ steps.release_output.outputs.pr_number }}
+      head_sha: ${{ steps.release_output.outputs.head_sha }}
     steps:
       - name: Check out latest main and tags
         uses: actions/checkout@v4
@@ -120,13 +124,40 @@ jobs:
           set -euo pipefail
           gh release create "$RELEASE_TAG"             --verify-tag             --title "Vetoarr $RELEASE_TAG"             --generate-notes             --latest
 
+      - name: Export release details
+        id: release_output
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Dispatch GHCR image publication
+    needs: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
       - name: Trigger GHCR Docker publishing
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.release.outputs.release_tag }}
+          PR_NUMBER: ${{ needs.release.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.release.outputs.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::No valid release tag was provided by the release job."
+            exit 1
+          fi
+
+          # This independent job can be retried without cutting another release.
           gh workflow run publish-ghcr.yml --ref main -f version="$RELEASE_TAG"
           {
             echo "## Vetoarr $RELEASE_TAG"
