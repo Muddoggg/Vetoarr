@@ -223,7 +223,6 @@ GitHub Actions runs regression tests and Trivy container scans to help catch iss
 
 Vetoarr is open source, so feel free to look through the code, report a bug, suggest an improvement, or open a pull request. If you find a security issue, please use the private reporting instructions in [SECURITY.md](SECURITY.md) instead of posting it publicly.
 
-**Repository:** https://github.com/Muddoggg/Vetoarr
 
 ## Contributing
 
