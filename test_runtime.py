@@ -39,7 +39,8 @@ class PortalTests(unittest.TestCase):
         self.mock_user.start(); self.addCleanup(self.mock_user.stop)
 
     def req(self, path, method='GET', **kwargs):
-        return self.client.open(path, method=method, base_url=self.url, headers=self.headers, **kwargs)
+        headers = {**self.headers, **kwargs.pop('headers', {})}
+        return self.client.open(path, method=method, base_url=self.url, headers=headers, **kwargs)
 
     def csrf(self):
         with self.client.session_transaction(base_url=self.url) as session:
