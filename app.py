@@ -12,7 +12,7 @@ from functools import wraps
 from urllib.parse import quote, urlsplit, urlencode
 
 import requests
-from flask import Flask, abort, flash, g, jsonify, redirect, render_template_string, request, session, url_for
+from flask import Flask, abort, flash, g, has_request_context, jsonify, redirect, render_template_string, request, session, url_for
 from cryptography.fernet import Fernet, InvalidToken
 import base64
 
@@ -773,10 +773,15 @@ def plex_libraries(*, user_scoped=True):
     return result
 
 
-def collection_for_item(item, *, user_scoped=True, libraries=None):
+def collection_for_item(item, *, user_scoped=True):
     """Match an item to an allowed Plex library, never trust submitted section IDs."""
+    # Reuse the authorized library list for repeated items within one request.
+    cache_key = '_user_libraries' if user_scoped else '_owner_libraries'
+    libraries = getattr(g, cache_key, None) if has_request_context() else None
     if libraries is None:
         libraries = plex_libraries(user_scoped=user_scoped)
+        if has_request_context():
+            setattr(g, cache_key, libraries)
     matches = [library for library in libraries
                if library['id'] == str(item['section_id']) and library['type'] == item['type']]
     if len(matches) != 1:
@@ -842,10 +847,9 @@ def validated_bulk_items(ids):
     user_token = g.plex_server_token
     with ThreadPoolExecutor(max_workers=4) as pool:
         items = list(pool.map(lambda media_id: plex_item(media_id, user_token=user_token), ids))
-    # Resolve library permissions once per batch instead of one Plex call per title.
-    libraries = plex_libraries()
+    # Existing mapping checks reuse the request-scoped authorized library list.
     for item in items:
-        collection_for_item(item, libraries=libraries)
+        collection_for_item(item)
     return items
 
 
