@@ -773,9 +773,11 @@ def plex_libraries(*, user_scoped=True):
     return result
 
 
-def collection_for_item(item, *, user_scoped=True):
+def collection_for_item(item, *, user_scoped=True, libraries=None):
     """Match an item to an allowed Plex library, never trust submitted section IDs."""
-    matches = [library for library in plex_libraries(user_scoped=user_scoped)
+    if libraries is None:
+        libraries = plex_libraries(user_scoped=user_scoped)
+    matches = [library for library in libraries
                if library['id'] == str(item['section_id']) and library['type'] == item['type']]
     if len(matches) != 1:
         raise ValueError('Media does not belong to a configured Plex library')
@@ -840,9 +842,10 @@ def validated_bulk_items(ids):
     user_token = g.plex_server_token
     with ThreadPoolExecutor(max_workers=4) as pool:
         items = list(pool.map(lambda media_id: plex_item(media_id, user_token=user_token), ids))
-    # Keep the existing per-title authorization and library mapping checks.
+    # Resolve library permissions once per batch instead of one Plex call per title.
+    libraries = plex_libraries()
     for item in items:
-        collection_for_item(item)
+        collection_for_item(item, libraries=libraries)
     return items
 
 
