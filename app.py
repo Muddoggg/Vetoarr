@@ -840,11 +840,9 @@ def validated_bulk_items(ids):
     user_token = g.plex_server_token
     with ThreadPoolExecutor(max_workers=4) as pool:
         items = list(pool.map(lambda media_id: plex_item(media_id, user_token=user_token), ids))
-    libraries = plex_libraries()
+    # Keep the existing per-title authorization and library mapping checks.
     for item in items:
-        if not any(lib['id'] == str(item['section_id']) and lib['type'] == item['type']
-                   for lib in libraries):
-            raise ValueError('Media not in an allowed Plex library')
+        collection_for_item(item)
     return items
 
 
