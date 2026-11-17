@@ -10,14 +10,25 @@
   const form = document.getElementById('selection-review-form');
   const status = document.getElementById('selection-status');
   let selected = new Map();
-  try {
-    const data = JSON.parse(sessionStorage.getItem(key) || '[]');
-    if (Array.isArray(data)) data.slice(0, limit).forEach(x => {
-      if (x && /^[0-9]{1,18}$/.test(x.id) && typeof x.title === 'string')
-        selected.set(x.id, {id:x.id,title:x.title.slice(0,180),type:x.type});
-    });
-  } catch (_) { selected = new Map(); }
-  if (new URLSearchParams(location.search).get('submitted') === '1') selected.clear();
+  function loadSelections() {
+    const restored = new Map();
+    try {
+      const data = JSON.parse(sessionStorage.getItem(key) || '[]');
+      if (Array.isArray(data)) data.slice(0, limit).forEach(x => {
+        if (x && typeof x.id === 'string' && /^[0-9]{1,18}$/.test(x.id)
+            && typeof x.title === 'string' && (x.type === 'movie' || x.type === 'show'))
+          restored.set(x.id, {id:x.id, title:x.title.slice(0,180), type:x.type});
+      });
+    } catch (_) { /* Ignore invalid or unavailable browser storage. */ }
+    selected = restored;
+  }
+  loadSelections();
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('submitted') === '1') {
+    selected.clear();
+    url.searchParams.delete('submitted');
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+  }
   const save = () => { try { sessionStorage.setItem(key, JSON.stringify([...selected.values()])); } catch (_) {} };
   function render() {
     count.textContent = String(selected.size);
@@ -125,5 +136,11 @@
       observer.observe(sentinel);
     }
   }
+  window.addEventListener('pageshow', event => {
+    if (event.persisted) {
+      loadSelections();
+      render();
+    }
+  });
   render();
 })();
