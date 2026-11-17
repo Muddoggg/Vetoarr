@@ -6,6 +6,8 @@ import re
 import secrets
 import sqlite3
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from urllib.parse import quote, urlsplit, urlencode
 
@@ -34,7 +36,7 @@ LIBRARY_COLLECTIONS = {
 }
 MIN_DELETE_DAYS = max(1, int(os.getenv('MIN_DELETE_DAYS', '7')))
 MAX_SEARCH_LENGTH = 100
-BROWSE_PAGE_SIZE = 30
+BROWSE_PAGE_SIZE = 20
 MAX_BULK_ITEMS = 20
 MAX_CONTENT_LENGTH = 4096
 PLEX_SSO_CLIENT_ID = os.getenv('PLEX_SSO_CLIENT_ID', 'media-approval-portal-unraid-v6')
@@ -72,6 +74,19 @@ app.config.update(
 http = requests.Session()
 http.trust_env = False
 http.max_redirects = 0
+_thread_http = threading.local()
+
+
+def worker_http():
+    """One requests.Session per worker thread, never shared concurrently."""
+    client = getattr(_thread_http, 'client', None)
+    if client is None:
+        client = requests.Session()
+        client.trust_env = False
+        client.max_redirects = 0
+        _thread_http.client = client
+    return client
+
 
 
 def conn():
@@ -298,7 +313,8 @@ def service_json(method, url, *, token=False, **kwargs):
         headers['X-Plex-Client-Identifier'] = 'media-approval-portal-unraid'
     if token:
         headers['X-Plex-Token'] = PLEX_TOKEN
-    response = http.request(method, url, headers=headers, timeout=(3, 12), allow_redirects=False, **kwargs)
+    client = worker_http() if threading.current_thread() is not threading.main_thread() else http
+    response = client.request(method, url, headers=headers, timeout=(3, 12), allow_redirects=False, **kwargs)
     response.raise_for_status()
     if response.status_code in (301, 302, 303, 307, 308):
         raise ValueError('Service sent unexpected redirect')
@@ -309,12 +325,13 @@ def service_json(method, url, *, token=False, **kwargs):
     return response.json()
 
 
-def plex_get(path, params=None, *, user_scoped=False):
+def plex_get(path, params=None, *, user_scoped=False, user_token=None):
     if user_scoped:
-        user_token = getattr(g, 'plex_server_token', None)
+        user_token = user_token or getattr(g, 'plex_server_token', None)
         if not user_token:
             raise ValueError('Missing authorized server access')
-        response = http.get(PLEX_URL + path, params=params, headers=plex_headers(user_token), timeout=(3, 12), allow_redirects=False)
+        client = worker_http() if threading.current_thread() is not threading.main_thread() else http
+        response = client.get(PLEX_URL + path, params=params, headers=plex_headers(user_token), timeout=(3, 12), allow_redirects=False)
         response.raise_for_status()
         if response.is_redirect:
             raise ValueError('Unexpected Plex redirect')
@@ -326,10 +343,10 @@ def plex_get(path, params=None, *, user_scoped=False):
     return result['MediaContainer']
 
 
-def plex_item(media_id, *, user_scoped=True):
+def plex_item(media_id, *, user_scoped=True, user_token=None):
     if not re.fullmatch(r'[0-9]{1,18}', media_id):
         raise ValueError('Invalid Plex ID')
-    entries = plex_get('/library/metadata/' + quote(media_id, safe=''), user_scoped=user_scoped).get('Metadata', [])
+    entries = plex_get('/library/metadata/' + quote(media_id, safe=''), user_scoped=user_scoped, user_token=user_token).get('Metadata', [])
     if not isinstance(entries, list) or not entries:
         raise ValueError('Plex item unavailable')
     item = entries[0]
@@ -799,6 +816,39 @@ def browse_library(section_id, offset):
     return items, has_more
 
 
+
+@app.get('/api/library/<section_id>/items')
+@require_login
+def library_items(section_id):
+    """Server-validated, read-only cursor pages for the selected mapped library."""
+    try:
+        offset = int(request.args.get('offset', '0'))
+        libraries = plex_libraries()
+        chosen = next((x for x in libraries if x['id'] == section_id), None)
+        if chosen is None:
+            abort(404)
+        items, more = browse_library(section_id, offset)
+        return jsonify({'items': [x for x in items if x['type'] == chosen['type']],
+                        'has_more': more, 'next_offset': offset + BROWSE_PAGE_SIZE})
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        app.logger.warning('Library page fetch failed')
+        return jsonify({'error': 'Unable to load more titles'}), 502
+
+
+def validated_bulk_items(ids):
+    """Validate ownership-scoped items concurrently; collection mapping once."""
+    user_token = g.plex_server_token
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        items = list(pool.map(lambda media_id: plex_item(media_id, user_token=user_token), ids))
+    libraries = plex_libraries()
+    for item in items:
+        if not any(lib['id'] == str(item['section_id']) and lib['type'] == item['type']
+                   for lib in libraries):
+            raise ValueError('Media not in an allowed Plex library')
+    return items
+
+
+
 def search_plex(term):
     # Plex's /search can respond with grouped results or no top-level Metadata.
     # Search each movie/show library instead, using Plex's documented title filter.
@@ -960,9 +1010,7 @@ def review_bulk():
     if any(not re.fullmatch(r'[0-9]{1,18}', item) for item in ids):
         abort(400)
     try:
-        items = [plex_item(item) for item in ids]
-        for item in items:
-            collection_for_item(item)
+        items = validated_bulk_items(ids)
     except (requests.RequestException, ValueError, KeyError, TypeError):
         flash('Unable to verify the selected Plex items.')
         return redirect(url_for('index'))
@@ -984,9 +1032,7 @@ def submit_bulk():
     try:
         # Validate every item before creating any requests. This performs GETs
         # against Plex, never POSTs to Plex or Maintainerr.
-        items = [plex_item(item) for item in ids]
-        for item in items:
-            collection_for_item(item)
+        items = validated_bulk_items(ids)
     except (requests.RequestException, ValueError, KeyError, TypeError):
         flash('Could not validate all selected Plex items; no requests created')
         return redirect(url_for('index'))
@@ -1013,7 +1059,11 @@ def submit_bulk():
             created_rows = c.execute('SELECT * FROM requests WHERE id IN (' + ','.join('?' for _ in created_ids) + ')', created_ids).fetchall()
         discord_notify('new_request', created_rows)
     if session['role'] == 'admin':
-        outcomes = [process_approval(req_id, session['user']) for req_id in created_ids]
+        # Bounded concurrent approvals; each ID is claimed once in SQLite.
+        # Workers use isolated outbound HTTP sessions, and ambiguous POSTs remain review.
+        actor = session['user']
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            outcomes = list(pool.map(lambda req_id: process_approval(req_id, actor), created_ids))
         flash(f'{created} request(s) recorded; {outcomes.count("approved")} approved, {outcomes.count("pending")} pending, {outcomes.count("review")} need review. Verify Maintainerr before retrying any review item.')
     else:
         flash(f'{created} removal request(s) submitted for administrator approval; nothing deleted')
