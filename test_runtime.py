@@ -318,7 +318,7 @@ class PortalTests(unittest.TestCase):
             self.assertEqual(c.execute('SELECT COUNT(*) FROM requests').fetchone()[0], 0)
 
     def test_browser_selection_restore_and_one_time_clear_hooks(self):
-        source = pathlib.Path(portal.__file__).parent.joinpath('assets/browse.js').read_text(encoding='utf-8')
+        source = pathlib.Path(portal.__file__).parent.joinpath('static/browse.js').read_text(encoding='utf-8')
         self.assertIn('loadSelections()', source)
         self.assertIn("window.addEventListener('pageshow'", source)
         self.assertIn('event.persisted', source)
