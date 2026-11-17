@@ -91,6 +91,8 @@ def setup():
             id INTEGER PRIMARY KEY AUTOINCREMENT, requester TEXT NOT NULL, plex_id TEXT NOT NULL,
             media_type TEXT NOT NULL, title TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP, decided_at TEXT, decided_by TEXT, error TEXT)""")
+        if 'last_checked_at' not in {r['name'] for r in c.execute('PRAGMA table_info(requests)')}:
+            c.execute('ALTER TABLE requests ADD COLUMN last_checked_at INTEGER')
         c.execute("""CREATE TABLE IF NOT EXISTS plex_sessions (
             plex_user_id TEXT PRIMARY KEY, username TEXT NOT NULL, encrypted_token BLOB NOT NULL, encrypted_server_token BLOB,
             session_epoch INTEGER NOT NULL DEFAULT 0, last_validated INTEGER NOT NULL DEFAULT 0)""")
@@ -368,6 +370,53 @@ def has_membership(collection_id, media_id):
         raise ValueError('Unverifiable Maintainerr membership response')
     return any(isinstance(member, dict) and str(member.get('mediaServerId')) == media_id for member in members)
 
+
+
+def sync_removed_requests(limit=25, force=False):
+    """Read-only checks. Missing Plex media plus absent Maintainerr membership."""
+    now = int(time.time())
+    with conn() as c:
+        rows = c.execute("""SELECT id,plex_id,media_type FROM requests
+            WHERE status='approved' AND (? OR last_checked_at IS NULL OR last_checked_at < ?)
+            ORDER BY COALESCE(last_checked_at,0),id LIMIT ?""",
+            (int(force), now - 900, limit)).fetchall()
+    removed = 0
+    for row in rows:
+        try:
+            try:
+                metadata = plex_get('/library/metadata/' + row['plex_id'],
+                                    user_scoped=False).get('Metadata')
+                if not isinstance(metadata, list):
+                    raise ValueError('Invalid Plex metadata')
+                missing = not metadata
+                if metadata and (str(metadata[0].get('ratingKey')) != row['plex_id']
+                                 or metadata[0].get('type') != row['media_type']):
+                    raise ValueError('Plex media identity mismatch')
+            except requests.HTTPError as exc:
+                if exc.response is None or exc.response.status_code != 404:
+                    raise
+                missing = True
+            if missing:
+                collection_ids = [cid for (_, kind), cid in LIBRARY_COLLECTIONS.items()
+                                  if kind == row['media_type']]
+                if not collection_ids or any(has_membership(cid, row['plex_id'])
+                                             for cid in collection_ids):
+                    missing = False
+            with conn() as c:
+                if missing:
+                    changed = c.execute("""UPDATE requests SET status='removed',
+                        last_checked_at=? WHERE id=? AND status='approved'""",
+                        (now, row['id']))
+                    removed += changed.rowcount
+                else:
+                    c.execute("""UPDATE requests SET last_checked_at=?
+                        WHERE id=? AND status='approved'""", (now, row['id']))
+        except (requests.RequestException, ValueError, KeyError, TypeError, IndexError) as exc:
+            app.logger.warning('Status check %s failed: %s', row['id'], type(exc).__name__)
+            with conn() as c:
+                c.execute("""UPDATE requests SET last_checked_at=?
+                    WHERE id=? AND status='approved'""", (now, row['id']))
+    return len(rows), removed
 
 @app.get('/login')
 def login():
