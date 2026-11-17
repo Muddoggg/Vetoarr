@@ -293,7 +293,9 @@ class PortalTests(unittest.TestCase):
         self.assertIn(b'class="panel selection-panel"', response.data)
         self.assertIn(b'@media (min-width:821px) and (min-height:600px)', response.data)
         self.assertIn(b'position:sticky;top:16px', response.data)
-        self.assertIn(b'max-height:48dvh', response.data)
+        self.assertIn(b'max-height:38dvh', response.data)
+        self.assertIn(b'height:calc(100dvh - 32px)', response.data)
+        self.assertIn(b'flex:1 1 0;min-height:280px', response.data)
 
     def test_review_dialog_allows_removing_titles_before_submit(self):
         self.logged_in('222')
