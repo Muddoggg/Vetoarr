@@ -373,13 +373,12 @@ def has_membership(collection_id, media_id):
 def login():
     if session.get('plex_uid'):
         return redirect(url_for('index'))
-    return page("""<section class="auth"><h1>Vetoarr</h1><p>Request a movie or show removal from your Plex library. The server owner reviews requests before anything is scheduled for deletion.</p><p><a class="pill primary big" href="{{url_for('start_plex')}}">Sign in with Plex</a></p><p class="muted tiny">Use a Plex account with access to this server.</p></section>""")
+    return page("""<section class="auth"><h1>Vetoarr</h1><p>Request a movie or show removal from your Plex library. The server owner reviews requests before anything is scheduled for deletion.</p><form method="post" action="{{url_for('start_plex')}}" id="plex-login-form"><input type="hidden" name="csrf" value="{{csrf}}"><button class="primary big" type="submit">Sign in with Plex</button></form><p class="muted tiny">Use a Plex account with access to this server.</p><p id="plex-login-feedback" class="muted tiny" role="status" aria-live="polite"></p></section><script src="{{url_for('static',filename='login.js')}}" defer></script>""")
 
 
-@app.route('/auth/plex/start', methods=['GET', 'POST'])
+@app.post('/auth/plex/start')
 def start_plex():
-    if request.method == 'POST':
-        csrf_check()
+    csrf_check()
     # Browser-session rate limit; do not trust spoofable forwarding headers.
     # Cloudflare edge WAF rate limiting is required to deter cookie rotation.
     now = int(time.time())
@@ -411,8 +410,8 @@ def start_plex():
     # Instead render a local confirmation with a normal user-activated link.
     # This preserves form-action 'self' without weakening the CSP.
     plex_auth_url = 'https://app.plex.tv/auth#?' + args
-    if request.method == 'GET':
-        return redirect(plex_auth_url)
+    if request.accept_mimetypes.best == 'application/json':
+        return jsonify({'url': plex_auth_url})
     return page("""<section class="auth"><div class="auth-badge">PLEX ACCESS</div>
       <h1>Continue to <span>Plex</span></h1>
       <p class="muted">Your secure Plex sign-in request is ready. Continue to Plex to authorize access.</p>
