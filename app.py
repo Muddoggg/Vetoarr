@@ -843,7 +843,7 @@ def index():
         app.logger.warning('Plex search/browse failed: %s', type(exc).__name__)
         error = 'Plex library connection failed. Check Plex URL, token and JSON response in server logs.'
     if session['role'] == 'admin':
-        sync_removed_requests(limit=2)
+        sync_removed_requests(limit=1)
     with conn() as c:
         if session['role'] == 'admin':
             rows = c.execute('SELECT * FROM requests ORDER BY id DESC LIMIT 10').fetchall()
@@ -894,7 +894,7 @@ def requests_page():
         abort(400)
     per_page = 25
     if admin:
-        sync_removed_requests(limit=2)
+        sync_removed_requests(limit=1)
     with conn() as c:
         if admin and view == 'all':
             total = c.execute('SELECT COUNT(*) FROM requests').fetchone()[0]
@@ -929,9 +929,9 @@ def refresh_request_statuses():
     csrf_check()
     if session['role'] != 'admin':
         abort(403)
-    checked, removed = sync_removed_requests(limit=100, force=True)
+    checked, removed = sync_removed_requests(limit=5, force=True)
     flash(f'Checked {checked} approved request(s); marked {removed} removed.'
-          + (' Refresh again to check more requests.' if checked == 100 else ''))
+          + (' Refresh again to check more requests.' if checked == 5 else ''))
     return redirect(url_for('requests_page', view='all'))
 
 
