@@ -79,6 +79,55 @@ class PortalTests(unittest.TestCase):
                 c.execute("INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)",
                           ('plex:333','801234','movie','Example'))
 
+    def test_removed_media_can_be_requested_again(self):
+        with portal.conn() as c:
+            c.execute("INSERT INTO requests (requester,plex_id,media_type,title,status) VALUES (?,?,?,?,?)",
+                      ('plex:222','801237','movie','Old copy','removed'))
+            c.execute("INSERT INTO requests (requester,plex_id,media_type,title) VALUES (?,?,?,?)",
+                      ('plex:222','801237','movie','New copy'))
+
+    def test_refresh_confirms_absence_in_both_services(self):
+        with portal.conn() as c:
+            c.execute("INSERT INTO requests (requester,plex_id,media_type,title,status) VALUES (?,?,?,?,?)",
+                      ('plex:222','801238','movie','Removed title','approved'))
+        with patch.object(portal, 'plex_get', return_value={'Metadata': []}), \
+             patch.object(portal, 'has_membership', return_value=False):
+            checked, removed = portal.sync_removed_requests(force=True)
+        self.assertEqual((checked, removed), (1, 1))
+        with portal.conn() as c:
+            self.assertEqual(c.execute("SELECT status FROM requests WHERE plex_id='801238'").fetchone()[0], 'removed')
+
+    def test_refresh_keeps_approved_if_still_in_plex(self):
+        with portal.conn() as c:
+            c.execute("INSERT INTO requests (requester,plex_id,media_type,title,status) VALUES (?,?,?,?,?)",
+                      ('plex:222','801239','movie','Still available','approved'))
+        with patch.object(portal, 'plex_get', return_value={'Metadata': [{'ratingKey':'801239','type':'movie'}]}), \
+             patch.object(portal, 'has_membership') as member:
+            checked, removed = portal.sync_removed_requests(force=True)
+        self.assertEqual((checked, removed), (1, 0))
+        member.assert_not_called()
+
+    def test_refresh_preserves_approved_on_collection_error(self):
+        with portal.conn() as c:
+            c.execute("INSERT INTO requests (requester,plex_id,media_type,title,status) VALUES (?,?,?,?,?)",
+                      ('plex:222','801240','movie','Unknown deletion','approved'))
+        with patch.object(portal, 'plex_get', return_value={'Metadata': []}), \
+             patch.object(portal, 'has_membership', side_effect=ValueError('upstream')):
+            _, removed = portal.sync_removed_requests(force=True)
+        self.assertEqual(removed, 0)
+        with portal.conn() as c:
+            self.assertEqual(c.execute("SELECT status FROM requests WHERE plex_id='801240'").fetchone()[0], 'approved')
+
+    def test_refresh_requires_admin_and_csrf(self):
+        self.logged_in('222')
+        self.assertEqual(self.req('/admin/requests/refresh', 'POST',
+                                  data={'csrf': 'csrf-test'}).status_code, 403)
+        self.logged_in('111')
+        self.assertEqual(self.req('/admin/requests/refresh', 'POST').status_code, 403)
+        with patch.object(portal, 'sync_removed_requests', return_value=(0, 0)):
+            self.assertEqual(self.req('/admin/requests/refresh', 'POST',
+                                      data={'csrf': 'csrf-test'}).status_code, 302)
+
     def test_rejected_media_can_be_requested_again(self):
         with portal.conn() as c:
             c.execute("INSERT INTO requests (requester,plex_id,media_type,title,status) VALUES (?,?,?,?,?)",
